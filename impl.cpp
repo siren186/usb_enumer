@@ -95,9 +95,7 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
     PUSB_DESCRIPTOR_REQUEST                configDesc;
     PUSB_DESCRIPTOR_REQUEST                bosDesc;
     PSTRING_DESCRIPTOR_NODE                stringDescs;
-    PUSBDEVICEINFO                         info;
     PUSB_NODE_CONNECTION_INFORMATION_EX_V2 connectionInfoExV2;
-    PDEVICE_INFO_NODE                      pNode;
 
     // Loop over all ports of the hub.
     //
@@ -114,9 +112,7 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
         configDesc = NULL;
         bosDesc = NULL;
         stringDescs = NULL;
-        info = NULL;
         connectionInfoExV2 = NULL;
-        pNode = NULL;
         pDevProps = NULL;
         ZeroMemory(leafName, sizeof(leafName));
 
@@ -337,7 +333,6 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
                 sDrvKeyName.GetLength() < MAX_DRIVER_KEY_NAME)
             {
                 pDevProps = DriverNameToDeviceProperties(sDrvKeyName);
-                pNode = FindMatchingDeviceNodeForDriverName(sDrvKeyName, connectionInfoEx->DeviceIsHub);
             }
         }
 
@@ -346,9 +341,7 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
         //
         if (connectionInfoEx->ConnectionStatus == DeviceConnected)
         {
-            configDesc = GetConfigDescriptor(hHubDevice,
-                index,
-                0);
+            configDesc = GetConfigDescriptor(hHubDevice, index, 0);
         }
         else
         {
@@ -406,41 +399,6 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
             // hub info, hub name, and connection info pointers.  GPTR zero
             // initializes the structure for us.
             //
-            info = (PUSBDEVICEINFO)ALLOC(sizeof(USBDEVICEINFO));
-
-            if (info == NULL)
-            {
-                if (configDesc != NULL)
-                {
-                    FREE(configDesc);
-                }
-                if (bosDesc != NULL)
-                {
-                    FREE(bosDesc);
-                }
-                FREE(connectionInfoEx);
-
-                if (pPortConnectorProps != NULL)
-                {
-                    FREE(pPortConnectorProps);
-                }
-                if (connectionInfoExV2 != NULL)
-                {
-                    FREE(connectionInfoExV2);
-                }
-                break;
-            }
-
-            info->DeviceInfoType = DeviceInfo;
-            info->ConnectionInfo = connectionInfoEx;
-            info->PortConnectorProps = pPortConnectorProps;
-            info->ConfigDesc = configDesc;
-            info->StringDescs = stringDescs;
-            info->BosDesc = bosDesc;
-            info->ConnectionInfoV2 = connectionInfoExV2;
-            info->UsbDeviceProperties = pDevProps;
-            info->DeviceInfoNode = pNode;
-
             if (connectionInfoEx->ConnectionStatus == NoDeviceConnected)
             {
                 if (connectionInfoExV2 != NULL &&
@@ -853,37 +811,6 @@ VOID Impl::FreeDeviceProperties(_In_ PUSB_DEVICE_PNP_STRINGS *ppDevProps)
     FREE(*ppDevProps);
     *ppDevProps = NULL;
 }
-
-
-PDEVICE_INFO_NODE Impl::FindMatchingDeviceNodeForDriverName(const CString& sDrvKeyName, _In_ BOOLEAN IsHub)
-{
-    PDEVICE_INFO_NODE pNode = NULL;
-    PDEVICE_GUID_LIST pList = NULL;
-    PLIST_ENTRY       pEntry = NULL;
-
-    pList = IsHub ? &m_HubList : &m_DeviceList;
-
-    pEntry = pList->ListHead.Flink;
-
-    while (pEntry != &pList->ListHead)
-    {
-        pNode = CONTAINING_RECORD(pEntry,
-            DEVICE_INFO_NODE,
-            ListEntry);
-        //if (_stricmp(DriverKeyName, pNode->DeviceDriverName) == 0)
-        if (sDrvKeyName.CompareNoCase(pNode->DeviceDriverName) == 0)
-        {
-            return pNode;
-        }
-
-        pEntry = pEntry->Flink;
-    }
-
-    return NULL;
-}
-
-
-
 
 //*****************************************************************************
 //
@@ -1728,7 +1655,6 @@ _In_opt_ PUSB_DEVICE_PNP_STRINGS                DevProps
     PUSB_HUB_INFORMATION_EX  hubInfoEx = NULL;
     PUSB_HUB_CAPABILITIES_EX hubCapabilityEx = NULL;
     HANDLE                  hHubDevice = INVALID_HANDLE_VALUE;
-    PVOID                   info = NULL;
     //PCHAR                 deviceName = NULL;
     CString sFullHubName;
     ULONG                   nBytes = 0;
@@ -1738,16 +1664,6 @@ _In_opt_ PUSB_DEVICE_PNP_STRINGS                DevProps
     HRESULT                 hr = S_OK;
     //size_t                  cchHeader = 0;
     //size_t                  cchFullHubName = 0;
-
-    // Allocate some space for a USBDEVICEINFO structure to hold the
-    // hub info, hub name, and connection info pointers.  GPTR zero
-    // initializes the structure for us.
-    //
-    info = ALLOC(sizeof(USBEXTERNALHUBINFO));
-    if (info == NULL)
-    {
-        goto EnumerateHubError;
-    }
 
     // Allocate some space for a USB_NODE_INFORMATION structure for this Hub
     //
@@ -1767,34 +1683,6 @@ _In_opt_ PUSB_DEVICE_PNP_STRINGS                DevProps
     if (hubCapabilityEx == NULL)
     {
         goto EnumerateHubError;
-    }
-
-    // Keep copies of the Hub Name, Connection Info, and Configuration
-    // Descriptor pointers
-    //
-    ((PUSBROOTHUBINFO)info)->HubInfo = hubInfo;
-    wcscpy_s(((PUSBROOTHUBINFO)info)->HubName, MAX_DRIVER_KEY_NAME, HubName);
-
-    if (ConnectionInfo != NULL)
-    {
-        ((PUSBEXTERNALHUBINFO)info)->DeviceInfoType = ExternalHubInfo;
-        ((PUSBEXTERNALHUBINFO)info)->ConnectionInfo = ConnectionInfo;
-        ((PUSBEXTERNALHUBINFO)info)->ConfigDesc = ConfigDesc;
-        ((PUSBEXTERNALHUBINFO)info)->StringDescs = StringDescs;
-        ((PUSBEXTERNALHUBINFO)info)->PortConnectorProps = PortConnectorProps;
-        ((PUSBEXTERNALHUBINFO)info)->HubInfoEx = hubInfoEx;
-        ((PUSBEXTERNALHUBINFO)info)->HubCapabilityEx = hubCapabilityEx;
-        ((PUSBEXTERNALHUBINFO)info)->BosDesc = BosDesc;
-        ((PUSBEXTERNALHUBINFO)info)->ConnectionInfoV2 = ConnectionInfoV2;
-        ((PUSBEXTERNALHUBINFO)info)->UsbDeviceProperties = DevProps;
-    }
-    else
-    {
-        ((PUSBROOTHUBINFO)info)->DeviceInfoType = RootHubInfo;
-        ((PUSBROOTHUBINFO)info)->HubInfoEx = hubInfoEx;
-        ((PUSBROOTHUBINFO)info)->HubCapabilityEx = hubCapabilityEx;
-        ((PUSBROOTHUBINFO)info)->PortConnectorProps = PortConnectorProps;
-        ((PUSBROOTHUBINFO)info)->UsbDeviceProperties = DevProps;
     }
 
     // 
@@ -1882,14 +1770,6 @@ _In_opt_ PUSB_DEVICE_PNP_STRINGS                DevProps
     {
         FREE(hubInfoEx);
         hubInfoEx = NULL;
-        if (ConnectionInfo != NULL)
-        {
-            ((PUSBEXTERNALHUBINFO)info)->HubInfoEx = NULL;
-        }
-        else
-        {
-            ((PUSBROOTHUBINFO)info)->HubInfoEx = NULL;
-        }
     }
 
     //
@@ -1911,14 +1791,6 @@ _In_opt_ PUSB_DEVICE_PNP_STRINGS                DevProps
     {
         FREE(hubCapabilityEx);
         hubCapabilityEx = NULL;
-        if (ConnectionInfo != NULL)
-        {
-            ((PUSBEXTERNALHUBINFO)info)->HubCapabilityEx = NULL;
-        }
-        else
-        {
-            ((PUSBROOTHUBINFO)info)->HubCapabilityEx = NULL;
-        }
     }
     // Now recursively enumerate the ports of this hub.
     //
@@ -1952,10 +1824,6 @@ EnumerateHubError:
         FREE(hubInfoEx);
     }
 
-    if (info)
-    {
-        FREE(info);
-    }
     if (ConnectionInfo)
     {
         FREE(ConnectionInfo);
@@ -2476,8 +2344,6 @@ VOID Impl::EnumerateHostControllers(ULONG *DevicesConnected)
     m_nTotalDevicesConnected = 0;
     m_nTotalHubs = 0;
 
-    //EnumerateAllDevices();
-
     // Iterate over host controllers using the new GUID based interface
     //
     HDEVINFO hDevInfo = SetupDiGetClassDevs((LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, NULL, NULL, (DIGCF_PRESENT | DIGCF_DEVICEINTERFACE));
@@ -2547,192 +2413,8 @@ VOID Impl::EnumerateHostControllers(ULONG *DevicesConnected)
     return;
 }
 
-void Impl::EnumerateAllDevices()
-{
-    EnumerateAllDevicesWithGuid(&m_DeviceList,
-        (LPGUID)&GUID_DEVINTERFACE_USB_DEVICE);
-
-    EnumerateAllDevicesWithGuid(&m_HubList,
-        (LPGUID)&GUID_DEVINTERFACE_USB_HUB);
-}
-
-void Impl::EnumerateAllDevicesWithGuid(PDEVICE_GUID_LIST DeviceList, LPGUID Guid)
-{
-    if (DeviceList->hDevInfo != INVALID_HANDLE_VALUE)
-    {
-        ClearDeviceList(DeviceList);
-    }
-
-    DeviceList->hDevInfo = SetupDiGetClassDevs(Guid, NULL, NULL, (DIGCF_PRESENT | DIGCF_DEVICEINTERFACE));
-
-    if (DeviceList->hDevInfo != INVALID_HANDLE_VALUE)
-    {
-        DWORD dwIndex = 0;
-        DWORD dwError = 0;
-        CString sTmpBuf;
-
-        while (dwError != ERROR_NO_MORE_ITEMS)
-        {
-            PDEVICE_INFO_NODE pNode = (PDEVICE_INFO_NODE)ALLOC(sizeof(DEVICE_INFO_NODE));
-            if (pNode == NULL)
-            {
-                break;
-            }
-            pNode->hDevInfo = DeviceList->hDevInfo;
-            pNode->stDevInterfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
-            pNode->stDevInfoData.cbSize      = sizeof(SP_DEVINFO_DATA);
-
-            BOOL bSuc = SetupDiEnumDeviceInfo(DeviceList->hDevInfo, dwIndex, &pNode->stDevInfoData);
-
-            dwIndex++;
-
-            if (bSuc == FALSE)
-            {
-                dwError = GetLastError();
-                FreeDeviceInfoNode(&pNode);
-            }
-            else
-            {
-                ULONG  requiredLength;
-
-                sTmpBuf = GetDeviceProperty(
-                    DeviceList->hDevInfo,
-                    &pNode->stDevInfoData,
-                    SPDRP_DEVICEDESC);
-                if (sTmpBuf.IsEmpty())
-                {
-                    FreeDeviceInfoNode(&pNode);
-                    break;
-                }
-                else
-                {
-                    wcsncpy_s(pNode->DeviceDescName, MAX_DRIVER_KEY_NAME, sTmpBuf, sTmpBuf.GetLength());
-                }
-
-                sTmpBuf = GetDeviceProperty(DeviceList->hDevInfo,
-                    &pNode->stDevInfoData,
-                    SPDRP_DRIVER);
-                if (sTmpBuf.IsEmpty())
-                {
-                    FreeDeviceInfoNode(&pNode);
-                    break;
-                }
-                else
-                {
-                    wcsncpy_s(pNode->DeviceDriverName, MAX_DRIVER_KEY_NAME, sTmpBuf, sTmpBuf.GetLength());
-                }
-
-                pNode->stDevInterfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
-
-                bSuc = SetupDiEnumDeviceInterfaces(DeviceList->hDevInfo,
-                    0,
-                    Guid,
-                    dwIndex - 1,
-                    &pNode->stDevInterfaceData);
-                if (!bSuc)
-                {
-                    FreeDeviceInfoNode(&pNode);
-                    break;
-                }
-
-                bSuc = SetupDiGetDeviceInterfaceDetail(DeviceList->hDevInfo,
-                    &pNode->stDevInterfaceData,
-                    NULL,
-                    0,
-                    &requiredLength,
-                    NULL);
-
-                dwError = GetLastError();
-
-                if (!bSuc && dwError != ERROR_INSUFFICIENT_BUFFER)
-                {
-                    FreeDeviceInfoNode(&pNode);
-                    break;
-                }
-
-                pNode->DeviceDetailData = (PSP_DEVICE_INTERFACE_DETAIL_DATA)ALLOC(requiredLength);
-
-                if (pNode->DeviceDetailData == NULL)
-                {
-                    FreeDeviceInfoNode(&pNode);
-                    break;
-                }
-
-                pNode->DeviceDetailData->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
-
-                bSuc = SetupDiGetDeviceInterfaceDetail(DeviceList->hDevInfo,
-                    &pNode->stDevInterfaceData,
-                    pNode->DeviceDetailData,
-                    requiredLength,
-                    &requiredLength,
-                    NULL);
-                if (!bSuc)
-                {
-                    FreeDeviceInfoNode(&pNode);
-                    break;
-                }
-
-                InsertTailList(&DeviceList->ListHead, &pNode->ListEntry);
-            }
-        }
-    }
-}
-
-void Impl::ClearDeviceList(PDEVICE_GUID_LIST DeviceList)
-{
-    if (DeviceList->hDevInfo != INVALID_HANDLE_VALUE)
-    {
-        SetupDiDestroyDeviceInfoList(DeviceList->hDevInfo);
-        DeviceList->hDevInfo = INVALID_HANDLE_VALUE;
-    }
-
-    while (!IsListEmpty(&DeviceList->ListHead))
-    {
-        PDEVICE_INFO_NODE pNode = NULL;
-        PLIST_ENTRY pEntry;
-        pEntry = RemoveHeadList(&DeviceList->ListHead);
-        pNode = CONTAINING_RECORD(pEntry,
-            DEVICE_INFO_NODE,
-            ListEntry);
-        FreeDeviceInfoNode(&pNode);
-    }
-}
-
-VOID Impl::FreeDeviceInfoNode(
-_In_ PDEVICE_INFO_NODE *ppNode
-)
-{
-    if (ppNode == NULL)
-    {
-        return;
-    }
-
-    if (*ppNode == NULL)
-    {
-        return;
-    }
-
-    if ((*ppNode)->DeviceDetailData != NULL)
-    {
-        FREE((*ppNode)->DeviceDetailData);
-    }
-
-    FREE(*ppNode);
-    *ppNode = NULL;
-}
-
-VOID Impl::InitializeListHead(_Out_ PLIST_ENTRY ListHead)
-{
-    ListHead->Flink = ListHead->Blink = ListHead;
-}
-
 void Impl::Init()
 {
     m_nTotalDevicesConnected = 0;
     m_nTotalHubs = 0;
-
-    m_HubList.hDevInfo = INVALID_HANDLE_VALUE;
-    InitializeListHead(&m_HubList.ListHead);
-    m_DeviceList.hDevInfo = INVALID_HANDLE_VALUE;
-    InitializeListHead(&m_DeviceList.ListHead);
 }

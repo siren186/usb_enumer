@@ -184,8 +184,6 @@ typedef enum _TREEICON
 class Impl
 {
 private:
-    DEVICE_GUID_LIST m_HubList;
-    DEVICE_GUID_LIST m_DeviceList;
     int m_nTotalDevicesConnected;
     int m_nTotalHubs;
 
@@ -213,7 +211,6 @@ private:
         _In_ HDEVINFO DeviceInfoSet,
         _In_ PSP_DEVINFO_DATA DeviceInfoData,
         _In_ DWORD Property);
-    PDEVICE_INFO_NODE FindMatchingDeviceNodeForDriverName(const CString& sDrvKeyName, _In_ BOOLEAN IsHub);
     PUSB_DESCRIPTOR_REQUEST GetConfigDescriptor(HANDLE hHubDevice, ULONG ConnectionIndex, UCHAR DescriptorIndex);
     PUSB_DESCRIPTOR_REQUEST GetBOSDescriptor(HANDLE hHubDevice, ULONG ConnectionIndex);
     BOOL AreThereStringDescriptors(PUSB_DEVICE_DESCRIPTOR DeviceDesc, PUSB_CONFIGURATION_DESCRIPTOR ConfigDesc);
@@ -226,9 +223,4 @@ private:
     DWORD GetHostControllerPowerMap(HANDLE hHCDev, PUSBHOSTCONTROLLERINFO hcInfo);
     DWORD GetHostControllerInfo(HANDLE hHCDev, PUSBHOSTCONTROLLERINFO hcInfo);
     CString GetRootHubName(HANDLE HostController);
-    void EnumerateAllDevices();
-    void EnumerateAllDevicesWithGuid(PDEVICE_GUID_LIST DeviceList, LPGUID Guid);
-    void ClearDeviceList(PDEVICE_GUID_LIST DeviceList);
-    VOID InitializeListHead(_Out_ PLIST_ENTRY ListHead);
-    VOID FreeDeviceInfoNode(_In_ PDEVICE_INFO_NODE *ppNode);
 };
