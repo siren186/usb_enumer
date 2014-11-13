@@ -93,7 +93,6 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
     PUSB_PORT_CONNECTOR_PROPERTIES         pPortConnectorProps;
     USB_PORT_CONNECTOR_PROPERTIES          portConnectorProps;
     PUSB_DESCRIPTOR_REQUEST                configDesc;
-    PSTRING_DESCRIPTOR_NODE                stringDescs;
     PUSB_NODE_CONNECTION_INFORMATION_EX_V2 connectionInfoExV2;
 
     // Loop over all ports of the hub.
@@ -109,7 +108,6 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
         pPortConnectorProps = NULL;
         ZeroMemory(&portConnectorProps, sizeof(portConnectorProps));
         configDesc = NULL;
-        stringDescs = NULL;
         connectionInfoExV2 = NULL;
         pDevProps = NULL;
         ZeroMemory(leafName, sizeof(leafName));
@@ -344,21 +342,6 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
         else
         {
             configDesc = NULL;
-        }
-
-        if (configDesc != NULL &&
-            AreThereStringDescriptors(&connectionInfoEx->DeviceDescriptor,
-            (PUSB_CONFIGURATION_DESCRIPTOR)(configDesc + 1)))
-        {
-            stringDescs = GetAllStringDescriptors(
-                hHubDevice,
-                index,
-                &connectionInfoEx->DeviceDescriptor,
-                (PUSB_CONFIGURATION_DESCRIPTOR)(configDesc + 1));
-        }
-        else
-        {
-            stringDescs = NULL;
         }
 
         // If the device connected to the port is an external hub, get the
@@ -1775,10 +1758,7 @@ _In_opt_ PUSB_DEVICE_PNP_STRINGS                DevProps
     }
     // Now recursively enumerate the ports of this hub.
     //
-    EnumerateHubPorts(
-        hHubDevice,
-        hubInfo->u.HubInformation.HubDescriptor.bNumberOfPorts
-        );
+    EnumerateHubPorts(hHubDevice, hubInfo->u.HubInformation.HubDescriptor.bNumberOfPorts);
 
 
     CloseHandle(hHubDevice);
