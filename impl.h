@@ -184,11 +184,11 @@ typedef enum _TREEICON
 class Impl
 {
 private:
-    DEVICE_GUID_LIST gHubList;
-    DEVICE_GUID_LIST gDeviceList;
-    int TotalDevicesConnected;
-    int TotalHubs;
-    BOOL gDoConfigDesc;
+    DEVICE_GUID_LIST m_HubList;
+    DEVICE_GUID_LIST m_DeviceList;
+    int m_nTotalDevicesConnected;
+    int m_nTotalHubs;
+    BOOL m_bDoConfigDesc;
 
 public:
     void Init();
@@ -210,12 +210,10 @@ private:
     CString GetDriverKeyName(HANDLE Hub, ULONG ConnectionIndex);
     PUSB_DEVICE_PNP_STRINGS DriverNameToDeviceProperties(const CString& sDrvKeyName);
     BOOL DriverNameToDeviceInst(const CString& sDrvKeyName, _Out_ HDEVINFO *pDevInfo, _Out_writes_bytes_(sizeof(SP_DEVINFO_DATA)) PSP_DEVINFO_DATA pDevInfoData);
-    BOOL GetDeviceProperty(
+    CString GetDeviceProperty(
         _In_ HDEVINFO DeviceInfoSet,
         _In_ PSP_DEVINFO_DATA DeviceInfoData,
-        _In_ DWORD Property,
-        _Outptr_ TCHAR* pBuffer,
-        int nBufLen);
+        _In_ DWORD Property);
     PDEVICE_INFO_NODE FindMatchingDeviceNodeForDriverName(const CString& sDrvKeyName, _In_ BOOLEAN IsHub);
     PUSB_DESCRIPTOR_REQUEST GetConfigDescriptor(HANDLE hHubDevice, ULONG ConnectionIndex, UCHAR DescriptorIndex);
     PUSB_DESCRIPTOR_REQUEST GetBOSDescriptor(HANDLE hHubDevice, ULONG ConnectionIndex);
