@@ -93,7 +93,6 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
     PUSB_PORT_CONNECTOR_PROPERTIES         pPortConnectorProps;
     USB_PORT_CONNECTOR_PROPERTIES          portConnectorProps;
     PUSB_DESCRIPTOR_REQUEST                configDesc;
-    PUSB_DESCRIPTOR_REQUEST                bosDesc;
     PSTRING_DESCRIPTOR_NODE                stringDescs;
     PUSB_NODE_CONNECTION_INFORMATION_EX_V2 connectionInfoExV2;
 
@@ -110,7 +109,6 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
         pPortConnectorProps = NULL;
         ZeroMemory(&portConnectorProps, sizeof(portConnectorProps));
         configDesc = NULL;
-        bosDesc = NULL;
         stringDescs = NULL;
         connectionInfoExV2 = NULL;
         pDevProps = NULL;
@@ -349,17 +347,6 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
         }
 
         if (configDesc != NULL &&
-            connectionInfoEx->DeviceDescriptor.bcdUSB >= 0x0210)
-        {
-            bosDesc = GetBOSDescriptor(hHubDevice,
-                index);
-        }
-        else
-        {
-            bosDesc = NULL;
-        }
-
-        if (configDesc != NULL &&
             AreThereStringDescriptors(&connectionInfoEx->DeviceDescriptor,
             (PUSB_CONFIGURATION_DESCRIPTOR)(configDesc + 1)))
         {
@@ -388,8 +375,6 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
                     connectionInfoExV2,
                     pPortConnectorProps,
                     configDesc,
-                    bosDesc,
-                    stringDescs,
                     pDevProps);
             }
         }
@@ -1629,8 +1614,6 @@ _In_    PSP_DEVINFO_DATA deviceInfoData
             NULL,       // ConnectionInfoV2
             NULL,       // PortConnectorProps
             NULL,       // ConfigDesc
-            NULL,       // BosDesc
-            NULL,       // StringDescs
             NULL);      // We do not pass DevProps for RootHub
     }
     return;
@@ -1643,8 +1626,6 @@ _In_opt_ PUSB_NODE_CONNECTION_INFORMATION_EX    ConnectionInfo,
 _In_opt_ PUSB_NODE_CONNECTION_INFORMATION_EX_V2 ConnectionInfoV2,
 _In_opt_ PUSB_PORT_CONNECTOR_PROPERTIES         PortConnectorProps,
 _In_opt_ PUSB_DESCRIPTOR_REQUEST                ConfigDesc,
-_In_opt_ PUSB_DESCRIPTOR_REQUEST                BosDesc,
-_In_opt_ PSTRING_DESCRIPTOR_NODE                StringDescs,
 _In_opt_ PUSB_DEVICE_PNP_STRINGS                DevProps
 )
 {
@@ -1832,24 +1813,6 @@ EnumerateHubError:
     if (ConfigDesc)
     {
         FREE(ConfigDesc);
-    }
-
-    if (BosDesc)
-    {
-        FREE(BosDesc);
-    }
-
-    if (StringDescs != NULL)
-    {
-        PSTRING_DESCRIPTOR_NODE Next;
-
-        do {
-
-            Next = StringDescs->Next;
-            FREE(StringDescs);
-            StringDescs = Next;
-
-        } while (StringDescs != NULL);
     }
 }
 

@@ -199,8 +199,6 @@ private:
         _In_opt_ PUSB_NODE_CONNECTION_INFORMATION_EX_V2 ConnectionInfoV2,
         _In_opt_ PUSB_PORT_CONNECTOR_PROPERTIES PortConnectorProps,
         _In_opt_ PUSB_DESCRIPTOR_REQUEST ConfigDesc,
-        _In_opt_ PUSB_DESCRIPTOR_REQUEST BosDesc,
-        _In_opt_ PSTRING_DESCRIPTOR_NODE StringDescs,
         _In_opt_ PUSB_DEVICE_PNP_STRINGS DevProps);
     VOID EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts);
 
