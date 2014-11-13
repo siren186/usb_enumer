@@ -188,7 +188,6 @@ private:
     DEVICE_GUID_LIST m_DeviceList;
     int m_nTotalDevicesConnected;
     int m_nTotalHubs;
-    BOOL m_bDoConfigDesc;
 
 public:
     void Init();

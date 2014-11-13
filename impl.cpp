@@ -83,7 +83,6 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
     ULONG       index = 0;
     BOOL        success = 0;
     HRESULT     hr = S_OK;
-    //PCHAR       driverKeyName = NULL;
     CString sDrvKeyName;
     PUSB_DEVICE_PNP_STRINGS pDevProps;
     DWORD       dwSizeOfLeafName = 0;
@@ -345,8 +344,7 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
         // If there is a device connected to the port, try to retrieve the
         // Configuration Descriptor from the device.
         //
-        if (m_bDoConfigDesc &&
-            connectionInfoEx->ConnectionStatus == DeviceConnected)
+        if (connectionInfoEx->ConnectionStatus == DeviceConnected)
         {
             configDesc = GetConfigDescriptor(hHubDevice,
                 index,
@@ -2478,7 +2476,7 @@ VOID Impl::EnumerateHostControllers(ULONG *DevicesConnected)
     m_nTotalDevicesConnected = 0;
     m_nTotalHubs = 0;
 
-    EnumerateAllDevices();
+    //EnumerateAllDevices();
 
     // Iterate over host controllers using the new GUID based interface
     //
@@ -2732,7 +2730,6 @@ void Impl::Init()
 {
     m_nTotalDevicesConnected = 0;
     m_nTotalHubs = 0;
-    m_bDoConfigDesc = TRUE;
 
     m_HubList.hDevInfo = INVALID_HANDLE_VALUE;
     InitializeListHead(&m_HubList.ListHead);
