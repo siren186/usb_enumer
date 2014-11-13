@@ -188,8 +188,11 @@ private:
     int m_nTotalHubs;
 
 public:
-    void Init();
+    Impl() : m_nTotalDevicesConnected(0), m_nTotalHubs(0) {}
     VOID EnumerateHostControllers(ULONG *DevicesConnected);
+
+    void MyDebugModeTest(const CString& sFatherHubName, int nPortNum);
+    void MyReadUsbDescriptorRequest(PUSB_DESCRIPTOR_REQUEST pRequest);
 
 private:
     VOID EnumerateHostController(HANDLE hHCDev, _In_ HANDLE deviceInfo, _In_ PSP_DEVINFO_DATA deviceInfoData);
@@ -221,4 +224,6 @@ private:
     DWORD GetHostControllerPowerMap(HANDLE hHCDev, PUSBHOSTCONTROLLERINFO hcInfo);
     DWORD GetHostControllerInfo(HANDLE hHCDev, PUSBHOSTCONTROLLERINFO hcInfo);
     CString GetRootHubName(HANDLE HostController);
+    PUSB_COMMON_DESCRIPTOR GetNextDescriptor( _In_reads_bytes_(TotalLength) PUSB_COMMON_DESCRIPTOR FirstDescriptor, _In_ ULONG TotalLength, _In_ PUSB_COMMON_DESCRIPTOR StartDescriptor, _In_ long DescriptorType );
+    PUSB_COMMON_DESCRIPTOR NextDescriptor(_In_ PUSB_COMMON_DESCRIPTOR Descriptor);
 };

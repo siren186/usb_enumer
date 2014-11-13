@@ -2356,8 +2356,79 @@ VOID Impl::EnumerateHostControllers(ULONG *DevicesConnected)
     return;
 }
 
-void Impl::Init()
+void Impl::MyDebugModeTest( const CString& sFatherHubName, int nPortNum )
 {
-    m_nTotalDevicesConnected = 0;
-    m_nTotalHubs = 0;
+    CString sFullHubName;
+    sFullHubName.Format(_T("\\\\.\\%s"), sFatherHubName);
+
+    HANDLE hHubDevice = CreateFile(sFullHubName, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+    if (hHubDevice != INVALID_HANDLE_VALUE)
+    {
+        PUSB_DESCRIPTOR_REQUEST configDesc = GetConfigDescriptor(hHubDevice, 1, 0);
+        MyReadUsbDescriptorRequest(configDesc);
+    }
+}
+
+void Impl::MyReadUsbDescriptorRequest( PUSB_DESCRIPTOR_REQUEST pRequest )
+{
+    PUSB_CONFIGURATION_DESCRIPTOR ConfigDesc = (PUSB_CONFIGURATION_DESCRIPTOR)(pRequest + 1);
+    PUSB_COMMON_DESCRIPTOR commonDesc = (PUSB_COMMON_DESCRIPTOR)(ConfigDesc);
+
+    do 
+    {
+        switch (commonDesc->bDescriptorType)
+        {
+        case USB_INTERFACE_DESCRIPTOR_TYPE:
+            UCHAR bInterfaceClass = ((PUSB_INTERFACE_DESCRIPTOR)commonDesc)->bInterfaceClass;
+            UCHAR bInterfaceSubClass = ((PUSB_INTERFACE_DESCRIPTOR)commonDesc)->bInterfaceSubClass;
+            UCHAR bInterfaceProtocol = ((PUSB_INTERFACE_DESCRIPTOR)commonDesc)->bInterfaceProtocol;
+            break;
+        }
+    } while ((commonDesc = GetNextDescriptor((PUSB_COMMON_DESCRIPTOR)ConfigDesc, ConfigDesc->wTotalLength, commonDesc, -1)) != NULL);
+}
+
+PUSB_COMMON_DESCRIPTOR Impl::GetNextDescriptor(
+    _In_reads_bytes_(TotalLength) PUSB_COMMON_DESCRIPTOR FirstDescriptor,
+    _In_ ULONG TotalLength,
+    _In_ PUSB_COMMON_DESCRIPTOR StartDescriptor,
+    _In_ long DescriptorType
+    )
+{
+    PUSB_COMMON_DESCRIPTOR currentDescriptor = NULL;
+    PUSB_COMMON_DESCRIPTOR endDescriptor     = NULL;
+
+    endDescriptor = (PUSB_COMMON_DESCRIPTOR)((PUCHAR)FirstDescriptor + TotalLength);
+
+    if (StartDescriptor >= endDescriptor ||
+        NextDescriptor(StartDescriptor)>= endDescriptor)
+    {
+        return NULL;
+    }
+
+    if (DescriptorType == -1) // -1 means any type
+    {
+        return NextDescriptor(StartDescriptor);
+    }
+
+    currentDescriptor = StartDescriptor;
+
+    while (((currentDescriptor = NextDescriptor(currentDescriptor)) < endDescriptor)
+        && currentDescriptor != NULL)
+    {
+        if (currentDescriptor->bDescriptorType == (UCHAR)DescriptorType)
+        {
+            return currentDescriptor;
+        }
+    }
+    return NULL;
+}
+
+
+PUSB_COMMON_DESCRIPTOR Impl::NextDescriptor(_In_ PUSB_COMMON_DESCRIPTOR Descriptor)
+{
+    if (Descriptor->bLength == 0)
+    {
+        return NULL;
+    }
+    return (PUSB_COMMON_DESCRIPTOR)((PUCHAR)Descriptor + Descriptor->bLength);
 }
