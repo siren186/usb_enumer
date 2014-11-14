@@ -2,15 +2,10 @@
 #include "impl.h"
 
 VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
-
 {
-    ULONG       index = 0;
-    BOOL        success = 0;
-    HRESULT     hr = S_OK;
+    BOOL bSuc = 0;
     CString sDrvKeyName;
     PUSB_DEVICE_PNP_STRINGS pDevProps;
-    DWORD       dwSizeOfLeafName = 0;
-    CHAR        leafName[512];
     int         icon = 0;
 
     PUSB_NODE_CONNECTION_INFORMATION_EX    connectionInfoEx;
@@ -19,13 +14,8 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
     PUSB_DESCRIPTOR_REQUEST                configDesc;
     PUSB_NODE_CONNECTION_INFORMATION_EX_V2 connectionInfoExV2;
 
-    // Loop over all ports of the hub.
-    //
-    // Port indices are 1 based, not 0 based.
-    //
-    for (index = 1; index <= NumPorts; index++)
+    for (ULONG index = 1; index <= NumPorts; index++)
     {
-        ULONG nBytesEx;
         ULONG nBytes = 0;
 
         connectionInfoEx = NULL;
@@ -34,26 +24,9 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
         configDesc = NULL;
         connectionInfoExV2 = NULL;
         pDevProps = NULL;
-        ZeroMemory(leafName, sizeof(leafName));
 
-        //
-        // Allocate space to hold the connection info for this port.
-        // For now, allocate it big enough to hold info for 30 pipes.
-        //
-        // Endpoint numbers are 0-15.  Endpoint number 0 is the standard
-        // control endpoint which is not explicitly listed in the Configuration
-        // Descriptor.  There can be an IN endpoint and an OUT endpoint at
-        // endpoint numbers 1-15 so there can be a maximum of 30 endpoints
-        // per device configuration.
-        //
-        // Should probably size this dynamically at some point.
-        //
-
-        nBytesEx = sizeof(USB_NODE_CONNECTION_INFORMATION_EX)+
-            (sizeof(USB_PIPE_INFO)* 30);
-
+        ULONG nBytesEx = sizeof(USB_NODE_CONNECTION_INFORMATION_EX) + (sizeof(USB_PIPE_INFO) * 30);
         connectionInfoEx = (PUSB_NODE_CONNECTION_INFORMATION_EX)ALLOC(nBytesEx);
-
         if (connectionInfoEx == NULL)
         {
             break;
@@ -68,16 +41,9 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
             break;
         }
 
-        //
-        // Now query USBHUB for the structures
-        // for this port.  This will tell us if a device is attached to this
-        // port, among other things.
-        // The fault tolerate code is executed first.
-        //
-
         portConnectorProps.ConnectionIndex = index;
 
-        success = DeviceIoControl(hHubDevice,
+        bSuc = DeviceIoControl(hHubDevice,
             IOCTL_USB_GET_PORT_CONNECTOR_PROPERTIES,
             &portConnectorProps,
             sizeof(USB_PORT_CONNECTOR_PROPERTIES),
@@ -86,7 +52,7 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
             &nBytes,
             NULL);
 
-        if (success && nBytes == sizeof(USB_PORT_CONNECTOR_PROPERTIES))
+        if (bSuc && nBytes == sizeof(USB_PORT_CONNECTOR_PROPERTIES))
         {
             pPortConnectorProps = (PUSB_PORT_CONNECTOR_PROPERTIES)
                 ALLOC(portConnectorProps.ActualLength);
@@ -95,7 +61,7 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
             {
                 pPortConnectorProps->ConnectionIndex = index;
 
-                success = DeviceIoControl(hHubDevice,
+                bSuc = DeviceIoControl(hHubDevice,
                     IOCTL_USB_GET_PORT_CONNECTOR_PROPERTIES,
                     pPortConnectorProps,
                     portConnectorProps.ActualLength,
@@ -104,7 +70,7 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
                     &nBytes,
                     NULL);
 
-                if (!success || nBytes < portConnectorProps.ActualLength)
+                if (!bSuc || nBytes < portConnectorProps.ActualLength)
                 {
                     FREE(pPortConnectorProps);
                     pPortConnectorProps = NULL;
@@ -116,7 +82,7 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
         connectionInfoExV2->Length = sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2);
         connectionInfoExV2->SupportedUsbProtocols.Usb300 = 1;
 
-        success = DeviceIoControl(hHubDevice,
+        bSuc = DeviceIoControl(hHubDevice,
             IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX_V2,
             connectionInfoExV2,
             sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2),
@@ -125,7 +91,7 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
             &nBytes,
             NULL);
 
-        if (!success || nBytes < sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2))
+        if (!bSuc || nBytes < sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2))
         {
             FREE(connectionInfoExV2);
             connectionInfoExV2 = NULL;
@@ -133,7 +99,7 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
 
         connectionInfoEx->ConnectionIndex = index;
 
-        success = DeviceIoControl(hHubDevice,
+        bSuc = DeviceIoControl(hHubDevice,
             IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX,
             connectionInfoEx,
             nBytesEx,
@@ -142,16 +108,8 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
             &nBytesEx,
             NULL);
 
-        if (success)
+        if (bSuc)
         {
-            //
-            // Since the USB_NODE_CONNECTION_INFORMATION_EX is used to display
-            // the device speed, but the hub driver doesn't support indication
-            // of superspeed, we overwrite the value if the super speed
-            // data structures are available and indicate the device is operating
-            // at SuperSpeed.
-            // 
-
             if (connectionInfoEx->Speed == UsbHighSpeed
                 && connectionInfoExV2 != NULL
                 && connectionInfoExV2->Flags.DeviceIsOperatingAtSuperSpeedOrHigher)
@@ -162,10 +120,6 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
         else
         {
             PUSB_NODE_CONNECTION_INFORMATION    connectionInfo = NULL;
-
-            // Try using IOCTL_USB_GET_NODE_CONNECTION_INFORMATION
-            // instead of IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX
-            //
 
             nBytes = sizeof(USB_NODE_CONNECTION_INFORMATION)+
                 sizeof(USB_PIPE_INFO)* 30;
@@ -188,7 +142,7 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
 
             connectionInfo->ConnectionIndex = index;
 
-            success = DeviceIoControl(hHubDevice,
+            bSuc = DeviceIoControl(hHubDevice,
                 IOCTL_USB_GET_NODE_CONNECTION_INFORMATION,
                 connectionInfo,
                 nBytes,
@@ -197,7 +151,7 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
                 &nBytes,
                 NULL);
 
-            if (!success)
+            if (!bSuc)
             {
                 FREE(connectionInfo);
                 FREE(connectionInfoEx);
@@ -212,9 +166,6 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
                 continue;
             }
 
-            // Copy IOCTL_USB_GET_NODE_CONNECTION_INFORMATION into
-            // IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX structure.
-            //
             connectionInfoEx->ConnectionIndex = connectionInfo->ConnectionIndex;
             connectionInfoEx->DeviceDescriptor = connectionInfo->DeviceDescriptor;
             connectionInfoEx->CurrentConfigurationValue = connectionInfo->CurrentConfigurationValue;
@@ -231,8 +182,6 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
             FREE(connectionInfo);
         }
 
-        // Update the count of connected devices
-        //
         if (connectionInfoEx->ConnectionStatus == DeviceConnected)
         {
             m_nTotalDevicesConnected++;
@@ -243,8 +192,6 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
             m_nTotalHubs++;
         }
 
-        // If there is a device connected, get the Device Description
-        //
         if (connectionInfoEx->ConnectionStatus != NoDeviceConnected)
         {
             sDrvKeyName = GetDriverKeyName(hHubDevice, index);
@@ -256,9 +203,6 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
             }
         }
 
-        // If there is a device connected to the port, try to retrieve the
-        // Configuration Descriptor from the device.
-        //
         if (connectionInfoEx->ConnectionStatus == DeviceConnected)
         {
             configDesc = GetConfigDescriptor(hHubDevice, index, 0);
@@ -268,9 +212,6 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
             configDesc = NULL;
         }
 
-        // If the device connected to the port is an external hub, get the
-        // name of the external hub and recursively enumerate it.
-        //
         if (connectionInfoEx->DeviceIsHub)
         {
             CString sExtHubName = GetExternalHubName(hHubDevice, index);
@@ -282,10 +223,6 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
         }
         else
         {
-            // Allocate some space for a USBDEVICEINFO structure to hold the
-            // hub info, hub name, and connection info pointers.  GPTR zero
-            // initializes the structure for us.
-            //
             if (connectionInfoEx->ConnectionStatus == NoDeviceConnected)
             {
                 if (connectionInfoExV2 != NULL &&
@@ -314,7 +251,7 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
                 icon = BadDeviceIcon;
             }
         }
-    } // for
+    }
 }
 
 CString Impl::GetDriverKeyName(HANDLE Hub, ULONG ConnectionIndex)
