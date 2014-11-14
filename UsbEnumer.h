@@ -1,4 +1,5 @@
 #pragma once
+#include "tinyxml\tinyxml.h"
 
 #define MAX_DRIVER_KEY_NAME 256
 #define MAX_DEVICE_PROP 200
@@ -46,6 +47,7 @@ class CUsbEnumer
 private:
     int m_nTotalDevicesConnected;
     int m_nTotalHubs;
+    TiXmlDocument m_XmlDoc;
 
 public:
     CUsbEnumer() : m_nTotalDevicesConnected(0), m_nTotalHubs(0) {}
