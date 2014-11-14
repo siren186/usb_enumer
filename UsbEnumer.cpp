@@ -1143,14 +1143,29 @@ Exit0:
 
 VOID CUsbEnumer::EnumerateHostControllers(TiXmlElement* pXmlElemRoot)
 {
+
     HDEVINFO hDevInfo = SetupDiGetClassDevs((LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, NULL, NULL, (DIGCF_PRESENT | DIGCF_DEVICEINTERFACE));
     if (INVALID_HANDLE_VALUE != hDevInfo)
     {
+        SP_DEVICE_INTERFACE_DATA stInterfaceData = {0};
         SP_DEVINFO_DATA deviceInfoData = {0};
         deviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
         for (DWORD index=0; SetupDiEnumDeviceInfo(hDevInfo, index, &deviceInfoData); index++)
         {
-            _DoEnumHostControlers(index, hDevInfo, &deviceInfoData, pXmlElemRoot);
+            stInterfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
+            BOOL bSuc = SetupDiEnumDeviceInterfaces(hDevInfo, 0, (LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, index, &stInterfaceData);
+            if (!bSuc)
+            {
+                break;
+            }
+
+            CString sDevPath = _GetDevPath(hDevInfo, stInterfaceData);
+            if (sDevPath.IsEmpty())
+            {
+                break;
+            }
+
+            _DoEnumHostControlers(hDevInfo, &deviceInfoData, sDevPath, pXmlElemRoot);
         }
         SetupDiDestroyDeviceInfoList(hDevInfo);
     }
