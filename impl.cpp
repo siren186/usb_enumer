@@ -1,11 +1,6 @@
 #include "stdafx.h"
 #include "impl.h"
 
-// List of enumerated host controllers.
-//
-LIST_ENTRY EnumeratedHCListHead = { &EnumeratedHCListHead, &EnumeratedHCListHead };
-
-
 //
 //  BOOLEAN
 //  IsListEmpty(
@@ -353,12 +348,7 @@ VOID Impl::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
             if (!sExtHubName.IsEmpty() &&
                 sExtHubName.GetLength() < MAX_DRIVER_KEY_NAME)
             {
-                EnumerateHub(sExtHubName,
-                    connectionInfoEx,
-                    connectionInfoExV2,
-                    pPortConnectorProps,
-                    configDesc,
-                    pDevProps);
+                EnumerateHub(sExtHubName);
             }
         }
         else
@@ -1433,8 +1423,6 @@ CString Impl::GetExternalHubName(HANDLE Hub, ULONG ConnectionIndex)
 
     // Convert the External Hub name
     //
-    //extHubNameA = WideStrToMultiStr(extHubNameW->NodeName, nBytes);
-    // TODO: 这个地方的赋值会不会只赋了一个字符?
     sExtHubName = (LPCTSTR)pExtHubName->NodeName;
 
 Exit0:
@@ -1449,188 +1437,31 @@ Exit0:
     return sExtHubName;
 }
 
-//*****************************************************************************
-//
-// EnumerateHostController()
-//
-// hTreeParent - Handle of the TreeView item under which host controllers
-// should be added.
-//
-//*****************************************************************************
-
-VOID Impl::EnumerateHostController(
-HANDLE                   hHCDev,
-_In_    HANDLE           hDeviceInfo,
-_In_    PSP_DEVINFO_DATA deviceInfoData
-)
+VOID Impl::EnumerateHostController(_In_ HANDLE hHCDev, _In_ HDEVINFO hDeviceInfo, _In_ PSP_DEVINFO_DATA deviceInfoData)
 {
-    CString sDrvKeyName;
-    CString sRootHubName;
-    PLIST_ENTRY             listEntry = NULL;
-    PUSBHOSTCONTROLLERINFO  hcInfo = NULL;
-    PUSBHOSTCONTROLLERINFO  hcInfoInList = NULL;
-    DWORD                   dwSuccess;
-    BOOL                    success = FALSE;
-    ULONG                   deviceAndFunction = 0;
-    PUSB_DEVICE_PNP_STRINGS DevProps = NULL;
-
-
-    // Allocate a structure to hold information about this host controller.
-    //
-    hcInfo = (PUSBHOSTCONTROLLERINFO)ALLOC(sizeof(USBHOSTCONTROLLERINFO));
-
-    // just return if could not alloc memory
-    if (NULL == hcInfo)
-        return;
-
-    hcInfo->DeviceInfoType = HostControllerInfo;
-
-    // Obtain the driver key name for this host controller.
-    //
-    sDrvKeyName = GetHCDDriverKeyName(hHCDev);
-
-    if (sDrvKeyName.IsEmpty())
+    CString sDrvKeyName = GetHCDDriverKeyName(hHCDev);
+    if (FALSE == sDrvKeyName.IsEmpty())
     {
-        // Failure obtaining driver key name.
-        FREE(hcInfo);
-        return;
-    }
-    wcscpy_s(hcInfo->DriverKey, MAX_DRIVER_KEY_NAME, sDrvKeyName);
-
-    // Don't enumerate this host controller again if it already
-    // on the list of enumerated host controllers.
-    //
-    listEntry = EnumeratedHCListHead.Flink;
-
-    while (listEntry != &EnumeratedHCListHead)
-    {
-        hcInfoInList = CONTAINING_RECORD(listEntry,
-            USBHOSTCONTROLLERINFO,
-            ListEntry);
-
-        if (sDrvKeyName.CompareNoCase(hcInfoInList->DriverKey) == 0)
+        CString sRootHubName = GetRootHubName(hHCDev);
+        if (!sRootHubName.IsEmpty() && sRootHubName.GetLength() < MAX_DRIVER_KEY_NAME)
         {
-            // Already on the list, exit
-            //
-            FREE(hcInfo);
-            return;
+            EnumerateHub(sRootHubName);
         }
-
-        listEntry = listEntry->Flink;
     }
-
-    // Obtain host controller device properties
-    // 此处可以获取usb host的名称,见DevProps.DeviceDesc字段
-    DevProps = DriverNameToDeviceProperties(sDrvKeyName);
-
-    if (DevProps)
-    {
-        ULONG   ven, dev, subsys, rev;
-        ven = dev = subsys = rev = 0;
-
-        if (swscanf_s(DevProps->DeviceId,
-            _T("PCI\\VEN_%x&DEV_%x&SUBSYS_%x&REV_%x"),
-            &ven, &dev, &subsys, &rev) != 4)
-        {
-        }
-
-        hcInfo->VendorID = ven;
-        hcInfo->DeviceID = dev;
-        hcInfo->SubSysID = subsys;
-        hcInfo->Revision = rev;
-        hcInfo->UsbDeviceProperties = DevProps;
-    }
-
-    // Get the USB Host Controller power map
-    dwSuccess = GetHostControllerPowerMap(hHCDev, hcInfo);
-
-    // Get bus, device, and function
-    //
-    hcInfo->BusDeviceFunctionValid = FALSE;
-
-    success = SetupDiGetDeviceRegistryProperty(hDeviceInfo,
-        deviceInfoData,
-        SPDRP_BUSNUMBER,
-        NULL,
-        (PBYTE)&hcInfo->BusNumber,
-        sizeof(hcInfo->BusNumber),
-        NULL);
-
-    if (success)
-    {
-        success = SetupDiGetDeviceRegistryProperty(hDeviceInfo,
-            deviceInfoData,
-            SPDRP_ADDRESS,
-            NULL,
-            (PBYTE)&deviceAndFunction,
-            sizeof(deviceAndFunction),
-            NULL);
-    }
-
-    if (success)
-    {
-        hcInfo->BusDevice = (USHORT)(deviceAndFunction >> 16);
-        hcInfo->BusFunction = (USHORT)(deviceAndFunction & 0xffff);
-        hcInfo->BusDeviceFunctionValid = TRUE;
-    }
-
-    // Get the USB Host Controller info
-    dwSuccess = GetHostControllerInfo(hHCDev, hcInfo);
-
-    // Add this host controller to the list of enumerated
-    // host controllers.
-    //
-    InsertTailList(&EnumeratedHCListHead,
-        &hcInfo->ListEntry);
-
-    // Get the name of the root hub for this host
-    // controller and then enumerate the root hub.
-    //
-    sRootHubName = GetRootHubName(hHCDev);
-
-    if (!sRootHubName.IsEmpty() &&
-        sRootHubName.GetLength() < MAX_DRIVER_KEY_NAME)
-    {
-        EnumerateHub(
-            sRootHubName,
-            NULL,       // ConnectionInfo
-            NULL,       // ConnectionInfoV2
-            NULL,       // PortConnectorProps
-            NULL,       // ConfigDesc
-            NULL);      // We do not pass DevProps for RootHub
-    }
-    return;
 }
 
-
-VOID Impl::EnumerateHub(
-const CString&                                  HubName,
-_In_opt_ PUSB_NODE_CONNECTION_INFORMATION_EX    ConnectionInfo,
-_In_opt_ PUSB_NODE_CONNECTION_INFORMATION_EX_V2 ConnectionInfoV2,
-_In_opt_ PUSB_PORT_CONNECTOR_PROPERTIES         PortConnectorProps,
-_In_opt_ PUSB_DESCRIPTOR_REQUEST                ConfigDesc,
-_In_opt_ PUSB_DEVICE_PNP_STRINGS                DevProps
-)
+VOID Impl::EnumerateHub(_In_ const CString& HubName)
 {
-    // Initialize locals to not allocated state so the error cleanup routine
-    // only tries to cleanup things that were successfully allocated.
-    //
     PUSB_NODE_INFORMATION    hubInfo = NULL;
     PUSB_HUB_INFORMATION_EX  hubInfoEx = NULL;
     PUSB_HUB_CAPABILITIES_EX hubCapabilityEx = NULL;
     HANDLE                  hHubDevice = INVALID_HANDLE_VALUE;
-    //PCHAR                 deviceName = NULL;
     CString sFullHubName;
     ULONG                   nBytes = 0;
     BOOL                    success = 0;
     DWORD                   dwSizeOfLeafName = 0;
-    //CHAR                    leafName[512] = { 0 };
     HRESULT                 hr = S_OK;
-    //size_t                  cchHeader = 0;
-    //size_t                  cchFullHubName = 0;
 
-    // Allocate some space for a USB_NODE_INFORMATION structure for this Hub
-    //
     hubInfo = (PUSB_NODE_INFORMATION)ALLOC(sizeof(USB_NODE_INFORMATION));
     if (hubInfo == NULL)
     {
@@ -1649,40 +1480,7 @@ _In_opt_ PUSB_DEVICE_PNP_STRINGS                DevProps
         goto EnumerateHubError;
     }
 
-    // 
-    //     // Allocate a temp buffer for the full hub device name.
-    //     //
-    //     hr = StringCbLength("\\\\.\\", MAX_DEVICE_PROP, &cchHeader);
-    //     if (FAILED(hr))
-    //     {
-    //         goto EnumerateHubError;
-    //     }
-    //     cchFullHubName = cchHeader + cbHubName + 1;
-    //     deviceName = (PCHAR)ALLOC((DWORD)cchFullHubName);
-    //     if (deviceName == NULL)
-    //     {
-    //         OOPS();
-    //         goto EnumerateHubError;
-    //     }
-    // 
-    //     // Create the full hub device name
-    //     //
-    //     hr = StringCchCopyN(deviceName, cchFullHubName, "\\\\.\\", cchHeader);
-    //     if (FAILED(hr))
-    //     {
-    //         goto EnumerateHubError;
-    //     }
-    //     hr = StringCchCatN(deviceName, cchFullHubName, HubName, cbHubName);
-    //     if (FAILED(hr))
-    //     {
-    //         goto EnumerateHubError;
-    //     }
-
-    // Allocate a temp buffer for the full hub device name.
-    //
     sFullHubName.Format(_T("\\\\.\\%s"), HubName);
-    // Try to hub the open device
-    //
     hHubDevice = CreateFile(sFullHubName,
         GENERIC_WRITE,
         FILE_SHARE_WRITE,
@@ -1691,9 +1489,6 @@ _In_opt_ PUSB_DEVICE_PNP_STRINGS                DevProps
         0,
         NULL);
 
-    // Done with temp buffer for full hub device name
-    //
-    //FREE(deviceName);
     if (hHubDevice == INVALID_HANDLE_VALUE)
     {
         goto EnumerateHubError;
@@ -1778,21 +1573,6 @@ EnumerateHubError:
     if (hubInfo)
     {
         FREE(hubInfo);
-    }
-
-    if (hubInfoEx)
-    {
-        FREE(hubInfoEx);
-    }
-
-    if (ConnectionInfo)
-    {
-        FREE(ConnectionInfo);
-    }
-
-    if (ConfigDesc)
-    {
-        FREE(ConfigDesc);
     }
 }
 
@@ -2085,71 +1865,6 @@ Exit0:
 
 //*****************************************************************************
 //
-// GetHostControllerPowerMap()
-//
-// HANDLE hHCDev
-//      - handle to USB Host Controller
-//
-// PUSBHOSTCONTROLLERINFO hcInfo
-//      - data structure to receive the Power Map Info
-//
-// return DWORD dwError
-//      - return ERROR_SUCCESS or last error
-//
-//*****************************************************************************
-
-DWORD Impl::GetHostControllerPowerMap(
-HANDLE hHCDev,
-PUSBHOSTCONTROLLERINFO hcInfo)
-{
-    USBUSER_POWER_INFO_REQUEST UsbPowerInfoRequest;
-    PUSB_POWER_INFO            pUPI = &UsbPowerInfoRequest.PowerInformation;
-    DWORD                      dwError = 0;
-    DWORD                      dwBytes = 0;
-    BOOL                       bSuccess = FALSE;
-    int                        nIndex = 0;
-    int                        nPowerState = WdmUsbPowerSystemWorking;
-
-    for (; nPowerState <= WdmUsbPowerSystemShutdown; nIndex++, nPowerState++)
-    {
-        // zero initialize our request
-        memset(&UsbPowerInfoRequest, 0, sizeof(UsbPowerInfoRequest));
-
-        // set the header and request sizes
-        UsbPowerInfoRequest.Header.UsbUserRequest = USBUSER_GET_POWER_STATE_MAP;
-        UsbPowerInfoRequest.Header.RequestBufferLength = sizeof(UsbPowerInfoRequest);
-        UsbPowerInfoRequest.PowerInformation.SystemState = (WDMUSB_POWER_STATE)nPowerState;
-
-        //
-        // Now query USBHUB for the USB_POWER_INFO structure for this hub.
-        // For Selective Suspend support
-        //
-        bSuccess = DeviceIoControl(hHCDev,
-            IOCTL_USB_USER_REQUEST,
-            &UsbPowerInfoRequest,
-            sizeof(UsbPowerInfoRequest),
-            &UsbPowerInfoRequest,
-            sizeof(UsbPowerInfoRequest),
-            &dwBytes,
-            NULL);
-
-        if (!bSuccess)
-        {
-            dwError = GetLastError();
-        }
-        else
-        {
-            // copy the data into our USB Host Controller's info structure
-            memcpy(&(hcInfo->USBPowerInfo[nIndex]), pUPI, sizeof(USB_POWER_INFO));
-        }
-    }
-
-    return dwError;
-}
-
-
-//*****************************************************************************
-//
 // GetHostControllerInfo()
 //
 // HANDLE hHCDev
@@ -2276,101 +1991,77 @@ Exit0:
     return sRootHubName;
 }
 
-VOID Impl::EnumerateHostControllers(ULONG *DevicesConnected)
+VOID Impl::EnumerateHostControllers()
 {
-    HANDLE                           hHCDev = NULL;
-    SP_DEVINFO_DATA                  deviceInfoData;
-    SP_DEVICE_INTERFACE_DATA         stDeviceInterfaceData;
-    PSP_DEVICE_INTERFACE_DETAIL_DATA pDeviceInterfaceDetailData = NULL;
-    ULONG                            requiredLength = 0;
+    HANDLE hHCDev = INVALID_HANDLE_VALUE;
 
     m_nTotalDevicesConnected = 0;
     m_nTotalHubs = 0;
 
-    // Iterate over host controllers using the new GUID based interface
-    //
-    HDEVINFO hDevInfo = SetupDiGetClassDevs((LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, NULL, NULL, (DIGCF_PRESENT | DIGCF_DEVICEINTERFACE));
+    SP_DEVINFO_DATA deviceInfoData;
     deviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
-    for (DWORD index = 0; SetupDiEnumDeviceInfo(hDevInfo, index, &deviceInfoData); index++)
+    SP_DEVICE_INTERFACE_DATA stDeviceInterfaceData;
+    HDEVINFO hDevInfo = SetupDiGetClassDevs((LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, NULL, NULL, (DIGCF_PRESENT | DIGCF_DEVICEINTERFACE));
+    for (DWORD index=0; SetupDiEnumDeviceInfo(hDevInfo, index, &deviceInfoData); index++)
     {
         stDeviceInterfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
         BOOL bSuc = SetupDiEnumDeviceInterfaces(hDevInfo, 0, (LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, index, &stDeviceInterfaceData);
-
         if (!bSuc)
         {
             break;
         }
 
-        bSuc = SetupDiGetDeviceInterfaceDetail(hDevInfo, &stDeviceInterfaceData, NULL, 0, &requiredLength, NULL);
-
-        if (!bSuc && GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+        CString sDevPath = _GetDevPath(hDevInfo, stDeviceInterfaceData);
+        if (sDevPath.IsEmpty())
         {
             break;
         }
 
-        pDeviceInterfaceDetailData = (PSP_DEVICE_INTERFACE_DETAIL_DATA)ALLOC(requiredLength);
-        if (pDeviceInterfaceDetailData == NULL)
-        {
-            break;
-        }
-
-        pDeviceInterfaceDetailData->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
-
-        bSuc = SetupDiGetDeviceInterfaceDetail(hDevInfo,
-            &stDeviceInterfaceData,
-            pDeviceInterfaceDetailData,
-            requiredLength,
-            &requiredLength,
-            NULL);
-
-        if (!bSuc)
-        {
-            break;
-        }
-
-        hHCDev = CreateFile(pDeviceInterfaceDetailData->DevicePath,
-            GENERIC_WRITE,
-            FILE_SHARE_WRITE,
-            NULL,
-            OPEN_EXISTING,
-            0,
-            NULL);
-
-        // If the handle is valid, then we've successfully opened a Host
-        // Controller.  Display some info about the Host Controller itself,
-        // then enumerate the Root Hub attached to the Host Controller.
-        //
+        hHCDev = CreateFile(sDevPath, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
         if (hHCDev != INVALID_HANDLE_VALUE)
         {
             EnumerateHostController(hHCDev, hDevInfo, &deviceInfoData);
             CloseHandle(hHCDev);
+            hHCDev = INVALID_HANDLE_VALUE;
         }
+    }
 
-        FREE(pDeviceInterfaceDetailData);
+    if (INVALID_HANDLE_VALUE != hHCDev)
+    {
+        CloseHandle(hHCDev);
+        hHCDev = INVALID_HANDLE_VALUE;
     }
 
     SetupDiDestroyDeviceInfoList(hDevInfo);
 
-    *DevicesConnected = m_nTotalDevicesConnected;
-
     return;
 }
 
-void Impl::MyDebugModeTest( const CString& sFatherHubName, int nPortNum )
+BOOL Impl::IsAdbDevice( const CString& sFatherHubName, int nPortNum )
 {
+    BOOL bFindInterface0xff42 = FALSE;
+
     CString sFullHubName;
     sFullHubName.Format(_T("\\\\.\\%s"), sFatherHubName);
-
     HANDLE hHubDevice = CreateFile(sFullHubName, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
     if (hHubDevice != INVALID_HANDLE_VALUE)
     {
-        PUSB_DESCRIPTOR_REQUEST configDesc = GetConfigDescriptor(hHubDevice, 1, 0);
-        MyReadUsbDescriptorRequest(configDesc);
+        PUSB_DESCRIPTOR_REQUEST configDesc = GetConfigDescriptor(hHubDevice, nPortNum, 0);
+        _ReadUsbDescriptorRequest(configDesc, bFindInterface0xff42);
+        if (configDesc)
+        {
+            FREE(configDesc);
+        }
     }
+
+    return bFindInterface0xff42;
 }
 
-void Impl::MyReadUsbDescriptorRequest( PUSB_DESCRIPTOR_REQUEST pRequest )
+void Impl::_ReadUsbDescriptorRequest( PUSB_DESCRIPTOR_REQUEST pRequest, BOOL& bFindInterface0xff42)
 {
+    if (NULL == pRequest)
+        return;
+
     PUSB_CONFIGURATION_DESCRIPTOR ConfigDesc = (PUSB_CONFIGURATION_DESCRIPTOR)(pRequest + 1);
     PUSB_COMMON_DESCRIPTOR commonDesc = (PUSB_COMMON_DESCRIPTOR)(ConfigDesc);
 
@@ -2382,6 +2073,10 @@ void Impl::MyReadUsbDescriptorRequest( PUSB_DESCRIPTOR_REQUEST pRequest )
             UCHAR bInterfaceClass = ((PUSB_INTERFACE_DESCRIPTOR)commonDesc)->bInterfaceClass;
             UCHAR bInterfaceSubClass = ((PUSB_INTERFACE_DESCRIPTOR)commonDesc)->bInterfaceSubClass;
             UCHAR bInterfaceProtocol = ((PUSB_INTERFACE_DESCRIPTOR)commonDesc)->bInterfaceProtocol;
+            if (bInterfaceClass == 0xff && bInterfaceSubClass == 0x42)
+            {
+                bFindInterface0xff42 = TRUE;
+            }
             break;
         }
     } while ((commonDesc = GetNextDescriptor((PUSB_COMMON_DESCRIPTOR)ConfigDesc, ConfigDesc->wTotalLength, commonDesc, -1)) != NULL);
@@ -2423,7 +2118,6 @@ PUSB_COMMON_DESCRIPTOR Impl::GetNextDescriptor(
     return NULL;
 }
 
-
 PUSB_COMMON_DESCRIPTOR Impl::NextDescriptor(_In_ PUSB_COMMON_DESCRIPTOR Descriptor)
 {
     if (Descriptor->bLength == 0)
@@ -2431,4 +2125,42 @@ PUSB_COMMON_DESCRIPTOR Impl::NextDescriptor(_In_ PUSB_COMMON_DESCRIPTOR Descript
         return NULL;
     }
     return (PUSB_COMMON_DESCRIPTOR)((PUCHAR)Descriptor + Descriptor->bLength);
+}
+
+CString Impl::_GetDevPath( HDEVINFO hDevInfo, SP_DEVICE_INTERFACE_DATA stDeviceInterfaceData )
+{
+    CString sDevPath;
+    PSP_DEVICE_INTERFACE_DETAIL_DATA pDetailData = NULL;
+
+    // 读大小
+    ULONG requiredLength = 0;
+    BOOL bSuc = SetupDiGetDeviceInterfaceDetail(hDevInfo, &stDeviceInterfaceData, NULL, 0, &requiredLength, NULL);
+    if (!bSuc && GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+    {
+        goto Exit0; 
+    }
+
+    // 申请内存
+    pDetailData = (PSP_DEVICE_INTERFACE_DETAIL_DATA)ALLOC(requiredLength);
+    if (NULL == pDetailData)
+    {
+        goto Exit0;        
+    }
+
+    // 取值
+    pDetailData->cbSize = sizeof(SP_DEVICE_INTERFACE_DETAIL_DATA);
+    bSuc = SetupDiGetDeviceInterfaceDetail(hDevInfo, &stDeviceInterfaceData, pDetailData, requiredLength, &requiredLength, NULL);
+    if (bSuc)
+    {
+        sDevPath = (LPCTSTR)pDetailData->DevicePath;
+    }
+
+Exit0:
+    if (pDetailData)
+    {
+        FREE(pDetailData);
+        pDetailData = NULL;
+    }
+
+    return sDevPath;
 }

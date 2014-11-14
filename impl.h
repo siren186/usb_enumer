@@ -148,11 +148,6 @@ typedef struct _USBHOSTCONTROLLERINFO
     ULONG                               DeviceID;
     ULONG                               SubSysID;
     ULONG                               Revision;
-    USB_POWER_INFO                      USBPowerInfo[6];
-    BOOL                                BusDeviceFunctionValid;
-    ULONG                               BusNumber;
-    USHORT                              BusDevice;
-    USHORT                              BusFunction;
     PUSB_CONTROLLER_INFO_0              ControllerInfo;
     PUSB_DEVICE_PNP_STRINGS             UsbDeviceProperties;
 } USBHOSTCONTROLLERINFO, *PUSBHOSTCONTROLLERINFO;
@@ -189,20 +184,15 @@ private:
 
 public:
     Impl() : m_nTotalDevicesConnected(0), m_nTotalHubs(0) {}
-    VOID EnumerateHostControllers(ULONG *DevicesConnected);
+    VOID EnumerateHostControllers();
 
-    void MyDebugModeTest(const CString& sFatherHubName, int nPortNum);
-    void MyReadUsbDescriptorRequest(PUSB_DESCRIPTOR_REQUEST pRequest);
+
+    BOOL IsAdbDevice(const CString& sFatherHubName, int nPortNum);
+    void _ReadUsbDescriptorRequest(PUSB_DESCRIPTOR_REQUEST pRequest, BOOL& bFindInterface0xff42);
 
 private:
-    VOID EnumerateHostController(HANDLE hHCDev, _In_ HANDLE deviceInfo, _In_ PSP_DEVINFO_DATA deviceInfoData);
-    VOID EnumerateHub(
-        const CString& sHubName,
-        _In_opt_ PUSB_NODE_CONNECTION_INFORMATION_EX ConnectionInfo,
-        _In_opt_ PUSB_NODE_CONNECTION_INFORMATION_EX_V2 ConnectionInfoV2,
-        _In_opt_ PUSB_PORT_CONNECTOR_PROPERTIES PortConnectorProps,
-        _In_opt_ PUSB_DESCRIPTOR_REQUEST ConfigDesc,
-        _In_opt_ PUSB_DEVICE_PNP_STRINGS DevProps);
+    VOID EnumerateHostController(_In_ HANDLE hHCDev, _In_ HDEVINFO deviceInfo, _In_ PSP_DEVINFO_DATA deviceInfoData);
+    VOID EnumerateHub(_In_ const CString& sHubName);
     VOID EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts);
 
     CString GetDriverKeyName(HANDLE Hub, ULONG ConnectionIndex);
@@ -221,9 +211,13 @@ private:
     PSTRING_DESCRIPTOR_NODE GetStringDescriptor(HANDLE hHubDevice, ULONG ConnectionIndex, UCHAR DescriptorIndex, USHORT LanguageID);
     HRESULT GetStringDescriptors(_In_ HANDLE hHubDevice, _In_ ULONG ConnectionIndex, _In_ UCHAR DescriptorIndex, _In_ ULONG NumLanguageIDs, _In_reads_(NumLanguageIDs) USHORT *LanguageIDs, _In_ PSTRING_DESCRIPTOR_NODE StringDescNodeHead);
     CString GetHCDDriverKeyName(HANDLE HCD);
-    DWORD GetHostControllerPowerMap(HANDLE hHCDev, PUSBHOSTCONTROLLERINFO hcInfo);
     DWORD GetHostControllerInfo(HANDLE hHCDev, PUSBHOSTCONTROLLERINFO hcInfo);
     CString GetRootHubName(HANDLE HostController);
     PUSB_COMMON_DESCRIPTOR GetNextDescriptor( _In_reads_bytes_(TotalLength) PUSB_COMMON_DESCRIPTOR FirstDescriptor, _In_ ULONG TotalLength, _In_ PUSB_COMMON_DESCRIPTOR StartDescriptor, _In_ long DescriptorType );
     PUSB_COMMON_DESCRIPTOR NextDescriptor(_In_ PUSB_COMMON_DESCRIPTOR Descriptor);
+
+
+private:
+    // Из:"\\?\pci#ven_8086&dev_1e26&subsys_05771028&rev_04#3&11583659&1&e8#{3abf6f2d-71c4-462a-8a92-1e6861e6af27}"
+    CString _GetDevPath( HDEVINFO hDevInfo, SP_DEVICE_INTERFACE_DATA stDeviceInterfaceData );
 };
