@@ -47,18 +47,28 @@ class CUsbEnumer
 private:
     int m_nTotalDevicesConnected;
     int m_nTotalHubs;
-    TiXmlDocument m_XmlDoc;
 
 public:
     CUsbEnumer() : m_nTotalDevicesConnected(0), m_nTotalHubs(0) {}
-    VOID EnumerateHostControllers();
+
+    void EnumAllUsb()
+    {
+        TiXmlDocument* pXmlDoc = new TiXmlDocument();
+        TiXmlElement* pXmlElemRoot = new TiXmlElement("my_conputer");
+        pXmlDoc->LinkEndChild(pXmlElemRoot);
+
+        EnumerateHostControllers(pXmlElemRoot);
+        pXmlDoc->SaveFile("c:\\2.xml");
+    }
+
+    VOID EnumerateHostControllers(TiXmlElement* pXmlFatherElem);
     BOOL IsAdbDevice(const CString& sFatherHubName, int nPortNum);
 
 private:
-    void _ReadUsbDescriptorRequest(PUSB_DESCRIPTOR_REQUEST pRequest, BOOL& bFindInterface0xff42);
-    VOID EnumerateHostController(_In_ HANDLE hHCDev, _In_ HDEVINFO deviceInfo, _In_ PSP_DEVINFO_DATA deviceInfoData);
-    VOID EnumerateHub(_In_ const CString& sHubName);
-    VOID EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts);
+    void _MyReadUsbDescriptorRequest(PUSB_DESCRIPTOR_REQUEST pRequest, BOOL& bFindInterface0xff42);
+    VOID EnumerateHostController(_In_ HANDLE hHCDev, _In_ HDEVINFO deviceInfo, _In_ PSP_DEVINFO_DATA deviceInfoData, TiXmlElement* pXmlFatherElem);
+    VOID EnumerateHub(_In_ const CString& sHubName, TiXmlElement* pXmlFatherElem);
+    VOID EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlElement* pXmlFatherElem);
     CString GetDriverKeyName(HANDLE Hub, ULONG ConnectionIndex);
     PUSB_DEVICE_PNP_STRINGS DriverNameToDeviceProperties(const CString& sDrvKeyName);
     BOOL DriverNameToDeviceInst(const CString& sDrvKeyName, _Out_ HDEVINFO *pDevInfo, _Out_writes_bytes_(sizeof(SP_DEVINFO_DATA)) PSP_DEVINFO_DATA pDevInfoData);
@@ -77,4 +87,5 @@ private:
 
     // Из:"\\?\pci#ven_8086&dev_1e26&subsys_05771028&rev_04#3&11583659&1&e8#{3abf6f2d-71c4-462a-8a92-1e6861e6af27}"
     CString _GetDevPath( HDEVINFO hDevInfo, SP_DEVICE_INTERFACE_DATA stDeviceInterfaceData );
+    void _ParsepUsbDescriptorRequest( PUSB_DESCRIPTOR_REQUEST pRequest, TiXmlElement* elem);
 };
