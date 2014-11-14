@@ -1,6 +1,11 @@
 #pragma once
 #include "tinyxml\tinyxml.h"
 
+
+
+#define ALLOC(dwBytes) GlobalAlloc(GPTR,(dwBytes))
+#define FREE(hMem)     GlobalFree((hMem))
+
 #define MAX_DRIVER_KEY_NAME 256
 #define MAX_DEVICE_PROP 200
 #define NUM_STRING_DESC_TO_GET 32
@@ -62,6 +67,41 @@ public:
     }
 
     VOID EnumerateHostControllers(TiXmlElement* pXmlFatherElem);
+
+    void _DoEnumHostControlers( DWORD index, HDEVINFO hDevInfo, PSP_DEVINFO_DATA pDeviceInfoData, TiXmlElement* pXmlElemRoot )
+    {
+        SP_DEVICE_INTERFACE_DATA stInterfaceData = {0};
+        stInterfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
+        BOOL bSuc = SetupDiEnumDeviceInterfaces(hDevInfo, 0, (LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, index, &stInterfaceData);
+        if (bSuc)
+        {
+            CString sDevPath = _GetDevPath(hDevInfo, stInterfaceData);
+            if (!sDevPath.IsEmpty())
+            {
+                HANDLE hHCDev = CreateFile(sDevPath, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+                if (hHCDev != INVALID_HANDLE_VALUE)
+                {
+                    CString sDrvKeyName = GetHCDDriverKeyName(hHCDev);
+                    if (!sDrvKeyName.IsEmpty())
+                    {
+                        TiXmlElement* pXmlElemControler = new TiXmlElement("controler");
+                        PUSB_DEVICE_PNP_STRINGS DevProps = DriverNameToDeviceProperties(sDrvKeyName);
+                        if (DevProps)
+                        {
+                            pXmlElemControler->SetAttribute("name", CW2A((LPCTSTR)DevProps->DeviceDesc));
+                            pXmlElemRoot->LinkEndChild(pXmlElemControler);
+
+                            FREE(DevProps);
+                            DevProps = NULL;
+                        }
+                        EnumerateHostController(hHCDev, hDevInfo, pDeviceInfoData, pXmlElemControler);
+                    }
+                    CloseHandle(hHCDev);
+                }
+            }
+        }
+    }
+
     BOOL IsAdbDevice(const CString& sFatherHubName, int nPortNum);
 
 private:

@@ -1,8 +1,6 @@
 #include "stdafx.h"
 #include "UsbEnumer.h"
 
-#define ALLOC(dwBytes) GlobalAlloc(GPTR,(dwBytes))
-#define FREE(hMem)     GlobalFree((hMem))
 
 VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlElement* pXmlElemRootHub)
 {
@@ -1145,66 +1143,17 @@ Exit0:
 
 VOID CUsbEnumer::EnumerateHostControllers(TiXmlElement* pXmlElemRoot)
 {
-    m_nTotalConnectedDevices                 = 0;
-    m_nTotalHubs                             = 0;
-    HANDLE hHCDev                            = INVALID_HANDLE_VALUE;
-    SP_DEVINFO_DATA deviceInfoData           = {0};
-    SP_DEVICE_INTERFACE_DATA stInterfaceData = {0};
-
     HDEVINFO hDevInfo = SetupDiGetClassDevs((LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, NULL, NULL, (DIGCF_PRESENT | DIGCF_DEVICEINTERFACE));
-    if (INVALID_HANDLE_VALUE == hDevInfo)
+    if (INVALID_HANDLE_VALUE != hDevInfo)
     {
-        goto Exit0;
-    }
-
-    // ¿ªÊ¼Ã¶¾Ùusb host controler
-    deviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
-    for (DWORD index=0; SetupDiEnumDeviceInfo(hDevInfo, index, &deviceInfoData); index++)
-    {
-        stInterfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
-        BOOL bSuc = SetupDiEnumDeviceInterfaces(hDevInfo, 0, (LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, index, &stInterfaceData);
-        if (!bSuc)
+        SP_DEVINFO_DATA deviceInfoData = {0};
+        deviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
+        for (DWORD index=0; SetupDiEnumDeviceInfo(hDevInfo, index, &deviceInfoData); index++)
         {
-            break;
+            _DoEnumHostControlers(index, hDevInfo, &deviceInfoData, pXmlElemRoot);
         }
-
-        CString sDevPath = _GetDevPath(hDevInfo, stInterfaceData);
-        if (sDevPath.IsEmpty())
-        {
-            break;
-        }
-
-        hHCDev = CreateFile(sDevPath, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
-        if (hHCDev != INVALID_HANDLE_VALUE)
-        {
-            CString sDrvKeyName = GetHCDDriverKeyName(hHCDev);
-            if (!sDrvKeyName.IsEmpty())
-            {
-                TiXmlElement* pXmlElemControler = new TiXmlElement("controler");
-                PUSB_DEVICE_PNP_STRINGS DevProps = DriverNameToDeviceProperties(sDrvKeyName);
-                if (DevProps)
-                {
-                    pXmlElemControler->SetAttribute("name", CW2A((LPCTSTR)DevProps->DeviceDesc));
-                    pXmlElemRoot->LinkEndChild(pXmlElemControler);
-
-                    FREE(DevProps);
-                    DevProps = NULL;
-                }
-                EnumerateHostController(hHCDev, hDevInfo, &deviceInfoData, pXmlElemControler);
-            }
-            CloseHandle(hHCDev);
-            hHCDev = INVALID_HANDLE_VALUE;
-        }
+        SetupDiDestroyDeviceInfoList(hDevInfo);
     }
-
-Exit0:
-    if (INVALID_HANDLE_VALUE != hHCDev)
-    {
-        CloseHandle(hHCDev);
-        hHCDev = INVALID_HANDLE_VALUE;
-    }
-
-    SetupDiDestroyDeviceInfoList(hDevInfo);
 }
 
 BOOL CUsbEnumer::IsAdbDevice( const CString& sFatherHubName, int nPortNum )
