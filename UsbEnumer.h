@@ -45,11 +45,11 @@ typedef enum _TREEICON
 class CUsbEnumer
 {
 private:
-    int m_nTotalDevicesConnected;
+    int m_nTotalConnectedDevices;
     int m_nTotalHubs;
 
 public:
-    CUsbEnumer() : m_nTotalDevicesConnected(0), m_nTotalHubs(0) {}
+    CUsbEnumer() : m_nTotalConnectedDevices(0), m_nTotalHubs(0) {}
 
     void EnumAllUsb()
     {
@@ -85,7 +85,9 @@ private:
     PUSB_COMMON_DESCRIPTOR GetNextDescriptor( _In_reads_bytes_(TotalLength) PUSB_COMMON_DESCRIPTOR FirstDescriptor, _In_ ULONG TotalLength, _In_ PUSB_COMMON_DESCRIPTOR StartDescriptor, _In_ long DescriptorType );
     PUSB_COMMON_DESCRIPTOR NextDescriptor(_In_ PUSB_COMMON_DESCRIPTOR Descriptor);
 
+    void _ParsepUsbDescriptorRequest( PUSB_DESCRIPTOR_REQUEST pRequest, TiXmlElement* elem);
+
+private:
     // Из:"\\?\pci#ven_8086&dev_1e26&subsys_05771028&rev_04#3&11583659&1&e8#{3abf6f2d-71c4-462a-8a92-1e6861e6af27}"
     CString _GetDevPath( HDEVINFO hDevInfo, SP_DEVICE_INTERFACE_DATA stDeviceInterfaceData );
-    void _ParsepUsbDescriptorRequest( PUSB_DESCRIPTOR_REQUEST pRequest, TiXmlElement* elem);
 };

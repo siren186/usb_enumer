@@ -134,7 +134,7 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlEleme
 
         if (pConnectionInfoEx->ConnectionStatus == DeviceConnected)
         {
-            m_nTotalDevicesConnected++;
+            m_nTotalConnectedDevices++;
             pConfigDesc = GetConfigDescriptor(hHubDevice, index, 0);
         }
 
@@ -1145,24 +1145,30 @@ Exit0:
 
 VOID CUsbEnumer::EnumerateHostControllers(TiXmlElement* pXmlElemRoot)
 {
-    HANDLE hHCDev = INVALID_HANDLE_VALUE;
-    m_nTotalDevicesConnected = 0;
-    m_nTotalHubs = 0;
+    m_nTotalConnectedDevices                 = 0;
+    m_nTotalHubs                             = 0;
+    HANDLE hHCDev                            = INVALID_HANDLE_VALUE;
+    SP_DEVINFO_DATA deviceInfoData           = {0};
+    SP_DEVICE_INTERFACE_DATA stInterfaceData = {0};
 
-    SP_DEVINFO_DATA deviceInfoData;
-    deviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
-    SP_DEVICE_INTERFACE_DATA stDeviceInterfaceData;
     HDEVINFO hDevInfo = SetupDiGetClassDevs((LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, NULL, NULL, (DIGCF_PRESENT | DIGCF_DEVICEINTERFACE));
+    if (INVALID_HANDLE_VALUE == hDevInfo)
+    {
+        goto Exit0;
+    }
+
+    // ¿ªÊ¼Ã¶¾Ùusb host controler
+    deviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
     for (DWORD index=0; SetupDiEnumDeviceInfo(hDevInfo, index, &deviceInfoData); index++)
     {
-        stDeviceInterfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
-        BOOL bSuc = SetupDiEnumDeviceInterfaces(hDevInfo, 0, (LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, index, &stDeviceInterfaceData);
+        stInterfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
+        BOOL bSuc = SetupDiEnumDeviceInterfaces(hDevInfo, 0, (LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, index, &stInterfaceData);
         if (!bSuc)
         {
             break;
         }
 
-        CString sDevPath = _GetDevPath(hDevInfo, stDeviceInterfaceData);
+        CString sDevPath = _GetDevPath(hDevInfo, stInterfaceData);
         if (sDevPath.IsEmpty())
         {
             break;
@@ -1191,6 +1197,7 @@ VOID CUsbEnumer::EnumerateHostControllers(TiXmlElement* pXmlElemRoot)
         }
     }
 
+Exit0:
     if (INVALID_HANDLE_VALUE != hHCDev)
     {
         CloseHandle(hHCDev);
