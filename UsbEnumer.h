@@ -12,13 +12,21 @@
 
 typedef struct _USB_DEVICE_PNP_STRINGS
 {
-    TCHAR DeviceId[MAX_DRIVER_KEY_NAME];
-    TCHAR DeviceDesc[MAX_DRIVER_KEY_NAME];
-    TCHAR HwId[MAX_DRIVER_KEY_NAME];
-    TCHAR Service[MAX_DRIVER_KEY_NAME];
-    TCHAR DeviceClass[MAX_DRIVER_KEY_NAME];
-    TCHAR PowerState[MAX_DRIVER_KEY_NAME];
-} USB_DEVICE_PNP_STRINGS, *PUSB_DEVICE_PNP_STRINGS;
+    CString sDevInstanceId;
+    CString sDeviceDescript;
+    CString sHwId;
+    CString sService;
+    CString sDeviceClass;
+
+    void Clear()
+    {
+        sDevInstanceId.Empty();
+        sDeviceDescript.Empty();
+        sHwId.Empty();
+        sService.Empty();
+        sDeviceClass.Empty();
+    }
+} UsbDeviceProperties;
 
 typedef enum _USBDEVICEINFOTYPE
 {
@@ -76,7 +84,7 @@ private:
     VOID EnumerateHub(_In_ const CString& sHubName, TiXmlElement* pXmlFatherElem);
     VOID EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlElement* pXmlFatherElem);
     CString GetDriverKeyName(HANDLE Hub, ULONG ConnectionIndex);
-    PUSB_DEVICE_PNP_STRINGS DriverNameToDeviceProperties(const CString& sDrvKeyName);
+    BOOL _GetDeviceProperties(const CString& sDrvKeyName, UsbDeviceProperties& stDevPnpStrings);
     BOOL DriverNameToDeviceInst(const CString& sDrvKeyName, _Out_ HDEVINFO *pDevInfo, _Out_writes_bytes_(sizeof(SP_DEVINFO_DATA)) PSP_DEVINFO_DATA pDevInfoData);
     CString GetDeviceProperty(
         _In_ HDEVINFO DeviceInfoSet,
@@ -84,7 +92,6 @@ private:
         _In_ DWORD Property);
     PUSB_DESCRIPTOR_REQUEST GetConfigDescriptor(HANDLE hHubDevice, ULONG ConnectionIndex, UCHAR DescriptorIndex);
     CString GetExternalHubName(HANDLE Hub, ULONG ConnectionIndex);
-    VOID FreeDeviceProperties(_In_ PUSB_DEVICE_PNP_STRINGS *ppDevProps);
     PSTRING_DESCRIPTOR_NODE GetStringDescriptor(HANDLE hHubDevice, ULONG ConnectionIndex, UCHAR DescriptorIndex, USHORT LanguageID);
     CString GetHCDDriverKeyName(HANDLE HCD);
     CString GetRootHubName(HANDLE HostController);
@@ -97,5 +104,5 @@ private:
     // Из:"\\?\pci#ven_8086&dev_1e26&subsys_05771028&rev_04#3&11583659&1&e8#{3abf6f2d-71c4-462a-8a92-1e6861e6af27}"
     CString _GetDevPath( HDEVINFO hDevInfo, SP_DEVICE_INTERFACE_DATA stDeviceInterfaceData );
     void _GetConnInfo( ULONG index, HANDLE hHubDevice, PUSB_NODE_CONNECTION_INFORMATION_EX* ppConnInfoEx, PUSB_NODE_CONNECTION_INFORMATION_EX_V2* ppConnInfoExV2);
-    void _GetDevPnpStringsAndDescriptorRequest( ULONG index, HANDLE hHubDevice, PUSB_NODE_CONNECTION_INFORMATION_EX pConnInfoEx, PUSB_DEVICE_PNP_STRINGS* ppPngStrings, PUSB_DESCRIPTOR_REQUEST* ppDescriptorRequest);
+    void _GetDevPnpStringsAndDescriptorRequest( ULONG index, HANDLE hHubDevice, PUSB_NODE_CONNECTION_INFORMATION_EX pConnInfoEx, UsbDeviceProperties& stPngStrings, PUSB_DESCRIPTOR_REQUEST* ppDescriptorRequest);
 };

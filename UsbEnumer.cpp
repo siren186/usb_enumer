@@ -65,14 +65,9 @@ void CUsbEnumer::_GetConnInfo(
     }
 }
 
-void CUsbEnumer::_GetDevPnpStringsAndDescriptorRequest(
-    ULONG index,
-    HANDLE hHubDevice,
-    PUSB_NODE_CONNECTION_INFORMATION_EX pConnInfoEx,
-    PUSB_DEVICE_PNP_STRINGS* ppPngStrings,
-    PUSB_DESCRIPTOR_REQUEST* ppDescriptorRequest)
+void CUsbEnumer::_GetDevPnpStringsAndDescriptorRequest( ULONG index, HANDLE hHubDevice, PUSB_NODE_CONNECTION_INFORMATION_EX pConnInfoEx, UsbDeviceProperties& stPngStrings, PUSB_DESCRIPTOR_REQUEST* ppDescriptorRequest)
 {
-    if (pConnInfoEx && ppPngStrings && ppDescriptorRequest)
+    if (pConnInfoEx  && ppDescriptorRequest)
     {
         if (pConnInfoEx->ConnectionStatus == DeviceConnected)
         {
@@ -85,7 +80,7 @@ void CUsbEnumer::_GetDevPnpStringsAndDescriptorRequest(
             CString sDrvKeyName = GetDriverKeyName(hHubDevice, index);
             if (!sDrvKeyName.IsEmpty() && sDrvKeyName.GetLength() < MAX_DRIVER_KEY_NAME)
             {
-                *ppPngStrings = DriverNameToDeviceProperties(sDrvKeyName);
+                _GetDeviceProperties(sDrvKeyName, stPngStrings);
             }
         }
     }
@@ -100,7 +95,7 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlEleme
     PUSB_NODE_CONNECTION_INFORMATION_EX    pConnectionInfoEx   = NULL;
     PUSB_NODE_CONNECTION_INFORMATION_EX_V2 pConnectionInfoExV2 = NULL;
     PUSB_DESCRIPTOR_REQUEST                pDescriptorRequest    = NULL;
-    PUSB_DEVICE_PNP_STRINGS                pDevPnpStrings = NULL;
+    UsbDeviceProperties                 stDevPnpStrings;
 
     for (ULONG index = 1; index <= NumPorts; index++)
     {
@@ -121,8 +116,7 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlEleme
         }
 
         pDescriptorRequest = NULL;
-        pDevPnpStrings     = NULL;
-        _GetDevPnpStringsAndDescriptorRequest(index, hHubDevice, pConnectionInfoEx, &pDevPnpStrings, &pDescriptorRequest);
+        _GetDevPnpStringsAndDescriptorRequest(index, hHubDevice, pConnectionInfoEx, stDevPnpStrings, &pDescriptorRequest);
 
         if (pConnectionInfoEx)
         {
@@ -134,10 +128,7 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlEleme
                 if (!sExtHubName.IsEmpty() && sExtHubName.GetLength() < MAX_DRIVER_KEY_NAME)
                 {
                     TiXmlElement* pXmlElemExtHub = new TiXmlElement("ext_hub");
-                    if (pDevPnpStrings)
-                    {
-                        pXmlElemExtHub->SetAttribute("name", CW2A((LPCTSTR)pDevPnpStrings->DeviceDesc));
-                    }
+                    pXmlElemExtHub->SetAttribute("name", CW2A((LPCTSTR)stDevPnpStrings.sDeviceDescript));
                     pXmlElemExtHub->SetAttribute("node_name", CW2A(sExtHubName));
                     pXmlElemPort->LinkEndChild(pXmlElemExtHub);
 
@@ -163,11 +154,8 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlEleme
                 }
 
                 TiXmlElement* pXmlElemDev = new TiXmlElement("device");
-                if (pDevPnpStrings)
-                {
-                    pXmlElemDev->SetAttribute("name",      CW2A((LPCTSTR)pDevPnpStrings->DeviceDesc));
-                    pXmlElemDev->SetAttribute("device_id", CW2A((LPCTSTR)pDevPnpStrings->DeviceId));
-                }
+                pXmlElemDev->SetAttribute("name",      CW2A((LPCTSTR)stDevPnpStrings.sDeviceDescript));
+                pXmlElemDev->SetAttribute("device_id", CW2A((LPCTSTR)stDevPnpStrings.sDevInstanceId));
                 if (pDescriptorRequest)
                 {
                     _ParsepUsbDescriptorRequest(pDescriptorRequest, pXmlElemDev);
@@ -177,11 +165,6 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlEleme
             }
         }
 
-        if (pDevPnpStrings)
-        {
-            FREE(pDevPnpStrings);
-            pDevPnpStrings = NULL;
-        }
         if (pDescriptorRequest)
         {
             FREE(pDescriptorRequest);
@@ -286,115 +269,57 @@ Returns NULL if the matching DevNode is not found.
 The caller should free the returned structure using FREE() macro
 
 *****************************************************************************/
-PUSB_DEVICE_PNP_STRINGS CUsbEnumer::DriverNameToDeviceProperties(const CString& sDrvKeyName)
+BOOL CUsbEnumer::_GetDeviceProperties(const CString& sDrvKeyName, UsbDeviceProperties& stDevProperties)
 {
-    HDEVINFO        deviceInfo = INVALID_HANDLE_VALUE;
+    stDevProperties.Clear();
+
+    HDEVINFO        hDevInfo = INVALID_HANDLE_VALUE;
     SP_DEVINFO_DATA deviceInfoData = { 0 };
     ULONG           len;
-    BOOL            status;
-    PUSB_DEVICE_PNP_STRINGS pDevPnpStrings = NULL;
+    BOOL            bSuc;
     DWORD           lastError;
 
-    CString sTmpBuf;
-
-    // Allocate device propeties structure
-    pDevPnpStrings = (PUSB_DEVICE_PNP_STRINGS)ALLOC(sizeof(USB_DEVICE_PNP_STRINGS));
-
-    if (NULL == pDevPnpStrings)
-    {
-        status = FALSE;
-        goto Done;
-    }
-
     // Get device instance
-    status = DriverNameToDeviceInst(sDrvKeyName, &deviceInfo, &deviceInfoData);
-    if (status == FALSE)
+    bSuc = DriverNameToDeviceInst(sDrvKeyName, &hDevInfo, &deviceInfoData);
+    if (bSuc == FALSE)
     {
         goto Done;
     }
 
     len = 0;
-    status = SetupDiGetDeviceInstanceId(deviceInfo,
-        &deviceInfoData,
-        NULL,
-        0,
-        &len);
+    bSuc = SetupDiGetDeviceInstanceId(hDevInfo, &deviceInfoData, NULL, 0, &len);
     lastError = GetLastError();
 
-
-    if (status != FALSE && lastError != ERROR_INSUFFICIENT_BUFFER)
+    if (bSuc != FALSE && lastError != ERROR_INSUFFICIENT_BUFFER)
     {
-        status = FALSE;
+        bSuc = FALSE;
         goto Done;
     }
 
-    //
     // An extra byte is required for the terminating character
-    //
-
     len++;
-
-    status = SetupDiGetDeviceInstanceId(deviceInfo,
-        &deviceInfoData,
-        pDevPnpStrings->DeviceId,
-        MAX_DRIVER_KEY_NAME,
-        &len);
-    if (status == FALSE)
+    PTSTR pBuf = (PTSTR)ALLOC(len);
+    bSuc = SetupDiGetDeviceInstanceId(hDevInfo, &deviceInfoData, pBuf, MAX_DRIVER_KEY_NAME, &len);
+    if (bSuc == FALSE)
     {
         goto Done;
     }
+    stDevProperties.sDevInstanceId = pBuf;
 
-    sTmpBuf = GetDeviceProperty(deviceInfo,
-        &deviceInfoData,
-        SPDRP_DEVICEDESC);
-    if (!sTmpBuf.IsEmpty())
-    {
-        wcsncpy_s(pDevPnpStrings->DeviceDesc, MAX_DRIVER_KEY_NAME, sTmpBuf, sTmpBuf.GetLength());
-    }
-
-    //    
+    stDevProperties.sDeviceDescript = GetDeviceProperty(hDevInfo, &deviceInfoData, SPDRP_DEVICEDESC);
     // We don't fail if the following registry query fails as these fields are additional information only
-    //
+    stDevProperties.sHwId    = GetDeviceProperty(hDevInfo, &deviceInfoData, SPDRP_HARDWAREID);
+    stDevProperties.sService = GetDeviceProperty(hDevInfo, &deviceInfoData, SPDRP_SERVICE);
+    stDevProperties.sDeviceClass = GetDeviceProperty(hDevInfo, &deviceInfoData, SPDRP_CLASS);
 
-    sTmpBuf = GetDeviceProperty(deviceInfo,
-        &deviceInfoData,
-        SPDRP_HARDWAREID);
-    if (!sTmpBuf.IsEmpty())
-    {
-        wcsncpy_s(pDevPnpStrings->HwId, MAX_DRIVER_KEY_NAME, sTmpBuf, sTmpBuf.GetLength());
-    }
-
-    sTmpBuf = GetDeviceProperty(deviceInfo,
-        &deviceInfoData,
-        SPDRP_SERVICE);
-    if (!sTmpBuf.IsEmpty())
-    {
-        wcsncpy_s(pDevPnpStrings->Service, MAX_DRIVER_KEY_NAME, sTmpBuf, sTmpBuf.GetLength());
-    }
-
-    GetDeviceProperty(deviceInfo,
-        &deviceInfoData,
-        SPDRP_CLASS);
-    if (!sTmpBuf.IsEmpty())
-    {
-        wcsncpy_s(pDevPnpStrings->DeviceClass, MAX_DRIVER_KEY_NAME, sTmpBuf, sTmpBuf.GetLength());
-    }
 Done:
 
-    if (deviceInfo != INVALID_HANDLE_VALUE)
+    if (hDevInfo != INVALID_HANDLE_VALUE)
     {
-        SetupDiDestroyDeviceInfoList(deviceInfo);
+        SetupDiDestroyDeviceInfoList(hDevInfo);
     }
 
-    if (status == FALSE)
-    {
-        if (pDevPnpStrings != NULL)
-        {
-            FREE(pDevPnpStrings);
-            pDevPnpStrings = NULL;
-        }
-    }
-    return pDevPnpStrings;
+    return bSuc;
 }
 
 /*****************************************************************************
@@ -407,7 +332,7 @@ Returns FALSE if the matching DevNode is not found and TRUE if found
 *****************************************************************************/
 BOOL CUsbEnumer::DriverNameToDeviceInst(const CString& sDrvKeyName, _Out_ HDEVINFO *pDevInfo, _Out_writes_bytes_(sizeof(SP_DEVINFO_DATA)) PSP_DEVINFO_DATA pDevInfoData)
 {
-    HDEVINFO         deviceInfo = INVALID_HANDLE_VALUE;
+    HDEVINFO         hDevInfo = INVALID_HANDLE_VALUE;
     BOOL             status = TRUE;
     ULONG            deviceIndex;
     SP_DEVINFO_DATA  deviceInfoData;
@@ -433,12 +358,8 @@ BOOL CUsbEnumer::DriverNameToDeviceInst(const CString& sDrvKeyName, _Out_ HDEVIN
 
     // Examine all present devices to see if any match the given DriverName
     //
-    deviceInfo = SetupDiGetClassDevs(NULL,
-        NULL,
-        NULL,
-        DIGCF_ALLCLASSES | DIGCF_PRESENT);
-
-    if (deviceInfo == INVALID_HANDLE_VALUE)
+    hDevInfo = SetupDiGetClassDevs(NULL, NULL, NULL, DIGCF_ALLCLASSES | DIGCF_PRESENT);
+    if (hDevInfo == INVALID_HANDLE_VALUE)
     {
         status = FALSE;
         goto Done;
@@ -453,7 +374,7 @@ BOOL CUsbEnumer::DriverNameToDeviceInst(const CString& sDrvKeyName, _Out_ HDEVIN
         // Get devinst of the next device
         //
 
-        status = SetupDiEnumDeviceInfo(deviceInfo,
+        status = SetupDiEnumDeviceInfo(hDevInfo,
             deviceIndex,
             &deviceInfoData);
 
@@ -474,7 +395,7 @@ BOOL CUsbEnumer::DriverNameToDeviceInst(const CString& sDrvKeyName, _Out_ HDEVIN
         // Get the DriverName value
         //
 
-        CString sTmpBuf = GetDeviceProperty(deviceInfo,
+        CString sTmpBuf = GetDeviceProperty(hDevInfo,
             &deviceInfoData,
             SPDRP_DRIVER);
 
@@ -488,7 +409,7 @@ BOOL CUsbEnumer::DriverNameToDeviceInst(const CString& sDrvKeyName, _Out_ HDEVIN
         if (!sTmpBuf.IsEmpty() && sDrvKeyName.CompareNoCase(sTmpBuf) == 0)
         {
             done = TRUE;
-            *pDevInfo = deviceInfo;
+            *pDevInfo = hDevInfo;
             CopyMemory(pDevInfoData, &deviceInfoData, sizeof(deviceInfoData));
             break;
         }
@@ -498,9 +419,9 @@ Done:
 
     if (bResult == FALSE)
     {
-        if (deviceInfo != INVALID_HANDLE_VALUE)
+        if (hDevInfo != INVALID_HANDLE_VALUE)
         {
-            SetupDiDestroyDeviceInfoList(deviceInfo);
+            SetupDiDestroyDeviceInfoList(hDevInfo);
         }
     }
 
