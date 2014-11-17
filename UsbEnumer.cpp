@@ -11,7 +11,7 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
     PUSB_NODE_CONNECTION_INFORMATION_EX    pConnectionInfoEx   = NULL;
     PUSB_NODE_CONNECTION_INFORMATION_EX_V2 pConnectionInfoExV2 = NULL;
     PUSB_DESCRIPTOR_REQUEST                pConfigDesc    = NULL;
-    PUSB_DEVICE_PNP_STRINGS                pDevPnpStrings = NULL;
+    PUsbDevicePnpStrings                pDevPnpStrings = NULL;
 
     for (ULONG index = 1; index <= NumPorts; index++)
     {
@@ -196,71 +196,59 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
     }
 }
 
-CString CUsbEnumer::GetDriverKeyName(HANDLE Hub, ULONG ConnectionIndex)
+CString CUsbEnumer::GetDriverKeyName(HANDLE hHub, ULONG ConnectionIndex)
 {
-    CString sDrvKeyName;
-    BOOL                                success = 0;
-    ULONG                               nBytes = 0;
-    USB_NODE_CONNECTION_DRIVERKEY_NAME  stDriverKeyName;
+    CString sRetDrvKeyName;
     PUSB_NODE_CONNECTION_DRIVERKEY_NAME pDriverKeyName = NULL;
-    //PCHAR                               driverKeyNameA = NULL;
 
-    // Get the length of the name of the driver key of the device attached to
-    // the specified port.
-    //
+    // 读大小
+    USB_NODE_CONNECTION_DRIVERKEY_NAME stDriverKeyName = {0};
     stDriverKeyName.ConnectionIndex = ConnectionIndex;
-
-    success = DeviceIoControl(Hub,
+    ULONG ulBytes = 0;
+    BOOL bSuc = DeviceIoControl(
+        hHub,
         IOCTL_USB_GET_NODE_CONNECTION_DRIVERKEY_NAME,
         &stDriverKeyName,
         sizeof(stDriverKeyName),
         &stDriverKeyName,
         sizeof(stDriverKeyName),
-        &nBytes,
+        &ulBytes,
         NULL);
-
-    if (!success)
+    if (!bSuc)
     {
         goto Exit0;
     }
 
-    // Allocate space to hold the driver key name
-    //
-    nBytes = stDriverKeyName.ActualLength;
-
-    if (nBytes <= sizeof(stDriverKeyName))
+    ulBytes = stDriverKeyName.ActualLength;
+    if (ulBytes <= sizeof(stDriverKeyName))
     {
         goto Exit0;
     }
 
-    pDriverKeyName = (PUSB_NODE_CONNECTION_DRIVERKEY_NAME)ALLOC(nBytes);
+    // 申请内存
+    pDriverKeyName = (PUSB_NODE_CONNECTION_DRIVERKEY_NAME)ALLOC(ulBytes);
     if (pDriverKeyName == NULL)
     {
         goto Exit0;
     }
 
-    // Get the name of the driver key of the device attached to
-    // the specified port.
-    //
+    // 取值
     pDriverKeyName->ConnectionIndex = ConnectionIndex;
-
-    success = DeviceIoControl(Hub,
+    bSuc = DeviceIoControl(
+        hHub,
         IOCTL_USB_GET_NODE_CONNECTION_DRIVERKEY_NAME,
         pDriverKeyName,
-        nBytes,
+        ulBytes,
         pDriverKeyName,
-        nBytes,
-        &nBytes,
+        ulBytes,
+        &ulBytes,
         NULL);
-
-    if (!success)
+    if (!bSuc)
     {
         goto Exit0;
     }
 
-    //driverKeyNameA = WideStrToMultiStr(driverKeyNameW->DriverKeyName, nBytes);
-    // TODO: 这个地方, 赋值会不会只是赋了一个字符
-    sDrvKeyName = (LPCTSTR)pDriverKeyName->DriverKeyName;
+    sRetDrvKeyName = (LPCTSTR)pDriverKeyName->DriverKeyName;
 
 Exit0:
     if (pDriverKeyName != NULL)
@@ -269,7 +257,7 @@ Exit0:
         pDriverKeyName = NULL;
     }
 
-    return sDrvKeyName;
+    return sRetDrvKeyName;
 }
 
 /*****************************************************************************
@@ -282,35 +270,35 @@ Returns NULL if the matching DevNode is not found.
 The caller should free the returned structure using FREE() macro
 
 *****************************************************************************/
-PUSB_DEVICE_PNP_STRINGS CUsbEnumer::DriverNameToDeviceProperties(const CString& sDrvKeyName)
+PUsbDevicePnpStrings CUsbEnumer::DriverNameToDeviceProperties(const CString& sDrvKeyName)
 {
     HDEVINFO        deviceInfo = INVALID_HANDLE_VALUE;
     SP_DEVINFO_DATA deviceInfoData = { 0 };
     ULONG           len;
-    BOOL            status;
-    PUSB_DEVICE_PNP_STRINGS DevProps = NULL;
+    BOOL            bStatus;
+    PUsbDevicePnpStrings DevProps = NULL;
     DWORD           lastError;
 
     CString sTmpBuf;
 
     // Allocate device propeties structure
-    DevProps = (PUSB_DEVICE_PNP_STRINGS)ALLOC(sizeof(USB_DEVICE_PNP_STRINGS));
+    DevProps = (PUsbDevicePnpStrings)ALLOC(sizeof(UsbDevicePnpStrings));
 
     if (NULL == DevProps)
     {
-        status = FALSE;
+        bStatus = FALSE;
         goto Done;
     }
 
     // Get device instance
-    status = DriverNameToDeviceInst(sDrvKeyName, &deviceInfo, &deviceInfoData);
-    if (status == FALSE)
+    bStatus = DriverNameToDeviceInst(sDrvKeyName, &deviceInfo, &deviceInfoData);
+    if (bStatus == FALSE)
     {
         goto Done;
     }
 
     len = 0;
-    status = SetupDiGetDeviceInstanceId(deviceInfo,
+    bStatus = SetupDiGetDeviceInstanceId(deviceInfo,
         &deviceInfoData,
         NULL,
         0,
@@ -318,9 +306,9 @@ PUSB_DEVICE_PNP_STRINGS CUsbEnumer::DriverNameToDeviceProperties(const CString& 
     lastError = GetLastError();
 
 
-    if (status != FALSE && lastError != ERROR_INSUFFICIENT_BUFFER)
+    if (bStatus != FALSE && lastError != ERROR_INSUFFICIENT_BUFFER)
     {
-        status = FALSE;
+        bStatus = FALSE;
         goto Done;
     }
 
@@ -330,12 +318,12 @@ PUSB_DEVICE_PNP_STRINGS CUsbEnumer::DriverNameToDeviceProperties(const CString& 
 
     len++;
 
-    status = SetupDiGetDeviceInstanceId(deviceInfo,
+    bStatus = SetupDiGetDeviceInstanceId(deviceInfo,
         &deviceInfoData,
         DevProps->DeviceId,
         MAX_DRIVER_KEY_NAME,
         &len);
-    if (status == FALSE)
+    if (bStatus == FALSE)
     {
         goto Done;
     }
@@ -382,7 +370,7 @@ Done:
         SetupDiDestroyDeviceInfoList(deviceInfo);
     }
 
-    if (status == FALSE)
+    if (bStatus == FALSE)
     {
         if (DevProps != NULL)
         {

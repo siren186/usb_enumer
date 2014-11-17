@@ -18,7 +18,7 @@ typedef struct _USB_DEVICE_PNP_STRINGS
     TCHAR Service[MAX_DRIVER_KEY_NAME];
     TCHAR DeviceClass[MAX_DRIVER_KEY_NAME];
     TCHAR PowerState[MAX_DRIVER_KEY_NAME];
-} USB_DEVICE_PNP_STRINGS, *PUSB_DEVICE_PNP_STRINGS;
+} UsbDevicePnpStrings, *PUsbDevicePnpStrings;
 
 typedef enum _USBDEVICEINFOTYPE
 {
@@ -70,8 +70,7 @@ private:
     VOID EnumerateHostController(_In_ HANDLE hHCDev, _In_ HDEVINFO deviceInfo, _In_ PSP_DEVINFO_DATA deviceInfoData);
     VOID EnumerateHub(_In_ const CString& sHubName);
     VOID EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts);
-    CString GetDriverKeyName(HANDLE Hub, ULONG ConnectionIndex);
-    PUSB_DEVICE_PNP_STRINGS DriverNameToDeviceProperties(const CString& sDrvKeyName);
+    PUsbDevicePnpStrings DriverNameToDeviceProperties(const CString& sDrvKeyName);
     BOOL DriverNameToDeviceInst(const CString& sDrvKeyName, _Out_ HDEVINFO *pDevInfo, _Out_writes_bytes_(sizeof(SP_DEVINFO_DATA)) PSP_DEVINFO_DATA pDevInfoData);
     CString GetDeviceProperty(
         _In_ HDEVINFO DeviceInfoSet,
@@ -79,7 +78,7 @@ private:
         _In_ DWORD Property);
     PUSB_DESCRIPTOR_REQUEST GetConfigDescriptor(HANDLE hHubDevice, ULONG ConnectionIndex, UCHAR DescriptorIndex);
     CString GetExternalHubName(HANDLE Hub, ULONG ConnectionIndex);
-    VOID FreeDeviceProperties(_In_ PUSB_DEVICE_PNP_STRINGS *ppDevProps);
+    VOID FreeDeviceProperties(_In_ PUsbDevicePnpStrings *ppDevProps);
     PSTRING_DESCRIPTOR_NODE GetStringDescriptor(HANDLE hHubDevice, ULONG ConnectionIndex, UCHAR DescriptorIndex, USHORT LanguageID);
     CString GetHCDDriverKeyName(HANDLE HCD);
     CString GetRootHubName(HANDLE HostController);
@@ -91,4 +90,5 @@ private:
 private:
     // Из:"\\?\pci#ven_8086&dev_1e26&subsys_05771028&rev_04#3&11583659&1&e8#{3abf6f2d-71c4-462a-8a92-1e6861e6af27}"
     CString _GetDevPath( HDEVINFO hDevInfo, SP_DEVICE_INTERFACE_DATA stDeviceInterfaceData );
+    CString GetDriverKeyName(HANDLE Hub, ULONG ConnectionIndex);
 };
