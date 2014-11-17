@@ -98,24 +98,24 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlEleme
             }
         }
 
-        if (pConnectionInfoEx->ConnectionStatus == DeviceConnected)
-        {
-            m_nTotalConnectedDevices++;
-            pConfigDesc = GetConfigDescriptor(hHubDevice, index, 0);
-        }
-
-        if (pConnectionInfoEx->ConnectionStatus != NoDeviceConnected)
-        {
-            sDrvKeyName = GetDriverKeyName(hHubDevice, index);
-            if (!sDrvKeyName.IsEmpty() && sDrvKeyName.GetLength() < MAX_DRIVER_KEY_NAME)
-            {
-                pDevPnpStrings = DriverNameToDeviceProperties(sDrvKeyName);
-            }
-        }
-
         if (pConnectionInfoEx)
         {
-            if (pConnectionInfoEx->DeviceIsHub)
+            if (pConnectionInfoEx->ConnectionStatus == DeviceConnected)
+            {
+                m_nTotalConnectedDevices++;
+                pConfigDesc = GetConfigDescriptor(hHubDevice, index, 0);
+            }
+
+            if (pConnectionInfoEx->ConnectionStatus != NoDeviceConnected)
+            {
+                sDrvKeyName = GetDriverKeyName(hHubDevice, index);
+                if (!sDrvKeyName.IsEmpty() && sDrvKeyName.GetLength() < MAX_DRIVER_KEY_NAME)
+                {
+                    pDevPnpStrings = DriverNameToDeviceProperties(sDrvKeyName);
+                }
+            }
+
+            if (pConnectionInfoEx->DeviceIsHub) // 如果是hub,继续枚举
             {
                 m_nTotalHubs++;
 
@@ -133,12 +133,11 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlEleme
                     EnumerateHub(sExtHubName, pXmlElemExtHub);
                 }
             }
-            else
+            else // 如果不是hub,说明已枚举到终点.
             {
-                if (pConnectionInfoEx->ConnectionStatus == NoDeviceConnected)
+                if (pConnectionInfoExV2 && pConnectionInfoEx->ConnectionStatus == NoDeviceConnected)
                 {
-                    if (pConnectionInfoExV2 != NULL &&
-                        pConnectionInfoExV2->SupportedUsbProtocols.Usb300 == 1)
+                    if (pConnectionInfoExV2->SupportedUsbProtocols.Usb300 == 1)
                         icon = NoSsDeviceIcon;
                     else
                         icon = NoDeviceIcon;
@@ -155,7 +154,7 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlEleme
                 TiXmlElement* pXmlElemDev = new TiXmlElement("device");
                 if (pDevPnpStrings)
                 {
-                    pXmlElemDev->SetAttribute("name", CW2A((LPCTSTR)pDevPnpStrings->DeviceDesc));
+                    pXmlElemDev->SetAttribute("name",      CW2A((LPCTSTR)pDevPnpStrings->DeviceDesc));
                     pXmlElemDev->SetAttribute("device_id", CW2A((LPCTSTR)pDevPnpStrings->DeviceId));
                 }
                 if (pConfigDesc)
@@ -176,6 +175,16 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlEleme
         {
             FREE(pConfigDesc);
             pConfigDesc = NULL;
+        }
+        if (pConnectionInfoEx)
+        {
+            FREE(pConnectionInfoEx);
+            pConnectionInfoEx = NULL;
+        }
+        if (pConnectionInfoExV2)
+        {
+            FREE(pConnectionInfoExV2);
+            pConnectionInfoExV2 = NULL;
         }
     }
 }
