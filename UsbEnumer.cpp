@@ -812,8 +812,7 @@ VOID CUsbEnumer::EnumerateHostController(_In_ HANDLE hHCDev, _In_ HDEVINFO hDevi
     {
         TiXmlElement* pXmlElemRootHub = new TiXmlElement("root_hub");
         pXmlElemControler->LinkEndChild(pXmlElemRootHub);
-
-        EnumerateHub(sRootHubName, pXmlElemRootHub);
+        EnumerateHub(sRootHubName, pXmlElemRootHub); // 枚举usb host controller下的所有hub口.
     }
 }
 
@@ -864,6 +863,7 @@ Exit0:
     if (hubInfo)
     {
         FREE(hubInfo);
+        hubInfo = NULL;
     }
 }
 
@@ -1143,7 +1143,6 @@ Exit0:
 
 VOID CUsbEnumer::EnumerateHostControllers(TiXmlElement* pXmlElemRoot)
 {
-
     HDEVINFO hDevInfo = SetupDiGetClassDevs((LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, NULL, NULL, (DIGCF_PRESENT | DIGCF_DEVICEINTERFACE));
     if (INVALID_HANDLE_VALUE != hDevInfo)
     {
@@ -1165,7 +1164,19 @@ VOID CUsbEnumer::EnumerateHostControllers(TiXmlElement* pXmlElemRoot)
                 break;
             }
 
-            _DoEnumHostControlers(hDevInfo, &deviceInfoData, sDevPath, pXmlElemRoot);
+            // 打开设备句柄
+            HANDLE hHCDev = CreateFile(sDevPath, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+            if (hHCDev == INVALID_HANDLE_VALUE)
+            {
+                break;
+            }
+
+            TiXmlElement* pXmlElemControler = new TiXmlElement("controller");
+            pXmlElemRoot->LinkEndChild(pXmlElemControler);
+
+            // 开始枚举当前的usb host Controller.
+            EnumerateHostController(hHCDev, hDevInfo, &deviceInfoData, pXmlElemControler);
+            CloseHandle(hHCDev);
         }
         SetupDiDestroyDeviceInfoList(hDevInfo);
     }

@@ -68,23 +68,6 @@ public:
 
     VOID EnumerateHostControllers(TiXmlElement* pXmlFatherElem);
 
-    void _DoEnumHostControlers( HDEVINFO hDevInfo, PSP_DEVINFO_DATA pDeviceInfoData, const CString& sDevPath, TiXmlElement* pXmlElemRoot )
-    {
-        HANDLE hHCDev = CreateFile(sDevPath, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
-        if (hHCDev != INVALID_HANDLE_VALUE)
-        {
-            CString sDrvKeyName = GetHCDDriverKeyName(hHCDev);
-            if (!sDrvKeyName.IsEmpty())
-            {
-                TiXmlElement* pXmlElemControler = new TiXmlElement("controler");
-                pXmlElemRoot->LinkEndChild(pXmlElemControler);
-
-                EnumerateHostController(hHCDev, hDevInfo, pDeviceInfoData, pXmlElemControler);
-            }
-            CloseHandle(hHCDev);
-        }
-    }
-
     BOOL IsAdbDevice(const CString& sFatherHubName, int nPortNum);
 
 private:
