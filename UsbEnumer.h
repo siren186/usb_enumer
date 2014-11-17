@@ -96,4 +96,5 @@ private:
 private:
     // Из:"\\?\pci#ven_8086&dev_1e26&subsys_05771028&rev_04#3&11583659&1&e8#{3abf6f2d-71c4-462a-8a92-1e6861e6af27}"
     CString _GetDevPath( HDEVINFO hDevInfo, SP_DEVICE_INTERFACE_DATA stDeviceInterfaceData );
+    void _GetConnInfo( ULONG index, HANDLE hHubDevice, PUSB_NODE_CONNECTION_INFORMATION_EX* ppConnInfoEx, PUSB_NODE_CONNECTION_INFORMATION_EX_V2* ppConnInfoExV2);
 };

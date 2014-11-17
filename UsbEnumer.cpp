@@ -2,6 +2,69 @@
 #include "UsbEnumer.h"
 
 
+void CUsbEnumer::_GetConnInfo(
+    ULONG index,
+    HANDLE hHubDevice,
+    PUSB_NODE_CONNECTION_INFORMATION_EX* ppConnInfoEx,
+    PUSB_NODE_CONNECTION_INFORMATION_EX_V2* ppConnInfoExV2)
+{
+    // 取ConnInfoExV2
+    // 取ConnInfoEx,如果失败,再取ConnInfo
+    if (ppConnInfoEx && ppConnInfoExV2)
+    {
+        // ConnInfoExV2
+        PUSB_NODE_CONNECTION_INFORMATION_EX_V2 pConnInfoExV2 = (PUSB_NODE_CONNECTION_INFORMATION_EX_V2)ALLOC(sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2));
+        pConnInfoExV2->ConnectionIndex = index;
+        pConnInfoExV2->Length = sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2);
+        pConnInfoExV2->SupportedUsbProtocols.Usb300 = 1;
+        ULONG nBytesExV2 = 0;
+        BOOL bSuc = DeviceIoControl(hHubDevice, IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX_V2, pConnInfoExV2,
+            sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2), pConnInfoExV2, sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2), &nBytesExV2, NULL);
+        if (!bSuc || nBytesExV2 < sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2))
+        {
+            FREE(pConnInfoExV2);
+            pConnInfoExV2 = NULL;
+        }
+
+        // ConnInfoEx
+        ULONG nBytesEx = sizeof(USB_NODE_CONNECTION_INFORMATION_EX) + (sizeof(USB_PIPE_INFO) * 30);
+        PUSB_NODE_CONNECTION_INFORMATION_EX pConnInfoEx = (PUSB_NODE_CONNECTION_INFORMATION_EX)ALLOC(nBytesEx);
+        pConnInfoEx->ConnectionIndex = index;
+        bSuc = DeviceIoControl(hHubDevice, IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX, pConnInfoEx, nBytesEx, pConnInfoEx, nBytesEx, &nBytesEx, NULL);
+        if (!bSuc)
+        {
+            // ConnInfo
+            ULONG nBytes = sizeof(USB_NODE_CONNECTION_INFORMATION) + sizeof(USB_PIPE_INFO) * 30;
+            PUSB_NODE_CONNECTION_INFORMATION pConnInfo = (PUSB_NODE_CONNECTION_INFORMATION)ALLOC(nBytes);
+            pConnInfo->ConnectionIndex = index;
+            bSuc = DeviceIoControl(hHubDevice, IOCTL_USB_GET_NODE_CONNECTION_INFORMATION, pConnInfo, nBytes, pConnInfo, nBytes, &nBytes, NULL);
+            if (bSuc)
+            {
+                pConnInfoEx->ConnectionIndex   = pConnInfo->ConnectionIndex;
+                pConnInfoEx->DeviceDescriptor  = pConnInfo->DeviceDescriptor;
+                pConnInfoEx->Speed             = pConnInfo->LowSpeed ? UsbLowSpeed : UsbFullSpeed;
+                pConnInfoEx->DeviceIsHub       = pConnInfo->DeviceIsHub;
+                pConnInfoEx->DeviceAddress     = pConnInfo->DeviceAddress;
+                pConnInfoEx->NumberOfOpenPipes = pConnInfo->NumberOfOpenPipes;
+                pConnInfoEx->ConnectionStatus  = pConnInfo->ConnectionStatus;
+                pConnInfoEx->CurrentConfigurationValue = pConnInfo->CurrentConfigurationValue;
+
+                memcpy(&pConnInfoEx->PipeList[0], &pConnInfo->PipeList[0], sizeof(USB_PIPE_INFO)* 30);
+            }
+            else
+            {
+                FREE(pConnInfoEx);
+                pConnInfoEx = NULL;
+            }
+            FREE(pConnInfo);
+            pConnInfo = NULL;
+        }
+
+        *ppConnInfoEx   = pConnInfoEx;
+        *ppConnInfoExV2 = pConnInfoExV2;
+    }
+}
+
 VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlElement* pXmlElemRootHub)
 {
     BOOL bSuc = 0;
@@ -18,57 +81,14 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlEleme
         TiXmlElement* pXmlElemPort = new TiXmlElement("port");
         pXmlElemPort->SetAttribute("index", index);
         pXmlElemRootHub->LinkEndChild(pXmlElemPort);
-
-        pConnectionInfoEx   = NULL;
-        pConnectionInfoExV2 = NULL;
         pConfigDesc = NULL;
         pDevPnpStrings = NULL;
 
-        ULONG nBytesEx = sizeof(USB_NODE_CONNECTION_INFORMATION_EX) + (sizeof(USB_PIPE_INFO) * 30);
-        pConnectionInfoEx = (PUSB_NODE_CONNECTION_INFORMATION_EX)ALLOC(nBytesEx);
-        if (pConnectionInfoEx == NULL)
-        {
-            break;
-        }
+        pConnectionInfoEx   = NULL;
+        pConnectionInfoExV2 = NULL;
+        _GetConnInfo(index, hHubDevice, &pConnectionInfoEx, &pConnectionInfoExV2);
 
-        pConnectionInfoExV2 = (PUSB_NODE_CONNECTION_INFORMATION_EX_V2)ALLOC(sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2));
-        if (pConnectionInfoExV2 == NULL)
-        {
-            FREE(pConnectionInfoEx);
-            break;
-        }
-        pConnectionInfoExV2->ConnectionIndex = index;
-        pConnectionInfoExV2->Length = sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2);
-        pConnectionInfoExV2->SupportedUsbProtocols.Usb300 = 1;
-
-        ULONG nBytes = 0;
-        bSuc = DeviceIoControl(hHubDevice,
-            IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX_V2,
-            pConnectionInfoExV2,
-            sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2),
-            pConnectionInfoExV2,
-            sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2),
-            &nBytes,
-            NULL);
-
-        if (!bSuc || nBytes < sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2))
-        {
-            FREE(pConnectionInfoExV2);
-            pConnectionInfoExV2 = NULL;
-        }
-
-        pConnectionInfoEx->ConnectionIndex = index;
-
-        bSuc = DeviceIoControl(hHubDevice,
-            IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX,
-            pConnectionInfoEx,
-            nBytesEx,
-            pConnectionInfoEx,
-            nBytesEx,
-            &nBytesEx,
-            NULL);
-
-        if (bSuc)
+        if (pConnectionInfoExV2 && pConnectionInfoEx)
         {
             if (pConnectionInfoEx->Speed == UsbHighSpeed
                 && pConnectionInfoExV2 != NULL
@@ -76,58 +96,6 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlEleme
             {
                 pConnectionInfoEx->Speed = UsbSuperSpeed;
             }
-        }
-        else
-        {
-            nBytes = sizeof(USB_NODE_CONNECTION_INFORMATION) + sizeof(USB_PIPE_INFO) * 30;
-
-            PUSB_NODE_CONNECTION_INFORMATION pConnectionInfo = (PUSB_NODE_CONNECTION_INFORMATION)ALLOC(nBytes);
-            if (pConnectionInfo == NULL)
-            {
-                FREE(pConnectionInfoEx);
-                if (pConnectionInfoExV2 != NULL)
-                {
-                    FREE(pConnectionInfoExV2);
-                }
-                continue;
-            }
-
-            pConnectionInfo->ConnectionIndex = index;
-
-            bSuc = DeviceIoControl(hHubDevice,
-                IOCTL_USB_GET_NODE_CONNECTION_INFORMATION,
-                pConnectionInfo,
-                nBytes,
-                pConnectionInfo,
-                nBytes,
-                &nBytes,
-                NULL);
-
-            if (!bSuc)
-            {
-                FREE(pConnectionInfo);
-                FREE(pConnectionInfoEx);
-                if (pConnectionInfoExV2 != NULL)
-                {
-                    FREE(pConnectionInfoExV2);
-                }
-                continue;
-            }
-
-            pConnectionInfoEx->ConnectionIndex = pConnectionInfo->ConnectionIndex;
-            pConnectionInfoEx->DeviceDescriptor = pConnectionInfo->DeviceDescriptor;
-            pConnectionInfoEx->CurrentConfigurationValue = pConnectionInfo->CurrentConfigurationValue;
-            pConnectionInfoEx->Speed = pConnectionInfo->LowSpeed ? UsbLowSpeed : UsbFullSpeed;
-            pConnectionInfoEx->DeviceIsHub = pConnectionInfo->DeviceIsHub;
-            pConnectionInfoEx->DeviceAddress = pConnectionInfo->DeviceAddress;
-            pConnectionInfoEx->NumberOfOpenPipes = pConnectionInfo->NumberOfOpenPipes;
-            pConnectionInfoEx->ConnectionStatus = pConnectionInfo->ConnectionStatus;
-
-            memcpy(&pConnectionInfoEx->PipeList[0],
-                &pConnectionInfo->PipeList[0],
-                sizeof(USB_PIPE_INFO)* 30);
-
-            FREE(pConnectionInfo);
         }
 
         if (pConnectionInfoEx->ConnectionStatus == DeviceConnected)
@@ -145,56 +113,58 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlEleme
             }
         }
 
-        if (pConnectionInfoEx->DeviceIsHub)
+        if (pConnectionInfoEx)
         {
-            m_nTotalHubs++;
-
-            CString sExtHubName = GetExternalHubName(hHubDevice, index);
-            if (!sExtHubName.IsEmpty() &&
-                sExtHubName.GetLength() < MAX_DRIVER_KEY_NAME)
+            if (pConnectionInfoEx->DeviceIsHub)
             {
-                TiXmlElement* pXmlElemExtHub = new TiXmlElement("ext_hub");
-                if (pDevPnpStrings)
+                m_nTotalHubs++;
+
+                CString sExtHubName = GetExternalHubName(hHubDevice, index);
+                if (!sExtHubName.IsEmpty() && sExtHubName.GetLength() < MAX_DRIVER_KEY_NAME)
                 {
-                    pXmlElemExtHub->SetAttribute("name", CW2A((LPCTSTR)pDevPnpStrings->DeviceDesc));
-                }
-                pXmlElemExtHub->SetAttribute("node_name", CW2A(sExtHubName));
-                pXmlElemPort->LinkEndChild(pXmlElemExtHub);
+                    TiXmlElement* pXmlElemExtHub = new TiXmlElement("ext_hub");
+                    if (pDevPnpStrings)
+                    {
+                        pXmlElemExtHub->SetAttribute("name", CW2A((LPCTSTR)pDevPnpStrings->DeviceDesc));
+                    }
+                    pXmlElemExtHub->SetAttribute("node_name", CW2A(sExtHubName));
+                    pXmlElemPort->LinkEndChild(pXmlElemExtHub);
 
-                EnumerateHub(sExtHubName, pXmlElemExtHub);
-            }
-        }
-        else
-        {
-            if (pConnectionInfoEx->ConnectionStatus == NoDeviceConnected)
-            {
-                if (pConnectionInfoExV2 != NULL &&
-                    pConnectionInfoExV2->SupportedUsbProtocols.Usb300 == 1)
-                    icon = NoSsDeviceIcon;
-                else
-                    icon = NoDeviceIcon;
-            }
-            else if (pConnectionInfoEx->CurrentConfigurationValue)
-            {
-                pConnectionInfoEx->Speed == UsbSuperSpeed ? icon = GoodSsDeviceIcon : icon = GoodDeviceIcon;
+                    EnumerateHub(sExtHubName, pXmlElemExtHub);
+                }
             }
             else
             {
-                icon = BadDeviceIcon;
-            }
+                if (pConnectionInfoEx->ConnectionStatus == NoDeviceConnected)
+                {
+                    if (pConnectionInfoExV2 != NULL &&
+                        pConnectionInfoExV2->SupportedUsbProtocols.Usb300 == 1)
+                        icon = NoSsDeviceIcon;
+                    else
+                        icon = NoDeviceIcon;
+                }
+                else if (pConnectionInfoEx->CurrentConfigurationValue)
+                {
+                    pConnectionInfoEx->Speed == UsbSuperSpeed ? icon = GoodSsDeviceIcon : icon = GoodDeviceIcon;
+                }
+                else
+                {
+                    icon = BadDeviceIcon;
+                }
 
-            TiXmlElement* pXmlElemDev = new TiXmlElement("device");
-            if (pDevPnpStrings)
-            {
-                pXmlElemDev->SetAttribute("name", CW2A((LPCTSTR)pDevPnpStrings->DeviceDesc));
-                pXmlElemDev->SetAttribute("device_id", CW2A((LPCTSTR)pDevPnpStrings->DeviceId));
-            }
-            if (pConfigDesc)
-            {
-                _ParsepUsbDescriptorRequest(pConfigDesc, pXmlElemDev);
-            }
+                TiXmlElement* pXmlElemDev = new TiXmlElement("device");
+                if (pDevPnpStrings)
+                {
+                    pXmlElemDev->SetAttribute("name", CW2A((LPCTSTR)pDevPnpStrings->DeviceDesc));
+                    pXmlElemDev->SetAttribute("device_id", CW2A((LPCTSTR)pDevPnpStrings->DeviceId));
+                }
+                if (pConfigDesc)
+                {
+                    _ParsepUsbDescriptorRequest(pConfigDesc, pXmlElemDev);
+                }
 
-            pXmlElemPort->LinkEndChild(pXmlElemDev);
+                pXmlElemPort->LinkEndChild(pXmlElemDev);
+            }
         }
 
         if (pDevPnpStrings)
@@ -851,6 +821,7 @@ VOID CUsbEnumer::EnumerateHub(_In_ const CString& sHubName, TiXmlElement* pXmlEl
         goto Exit0;
     }
 
+    // 枚举这个hub口下的所有port
     EnumerateHubPorts(hHubDevice, hubInfo->u.HubInformation.HubDescriptor.bNumberOfPorts, pXmlElemRootHub);
 
 Exit0:
