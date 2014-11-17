@@ -81,4 +81,5 @@ private:
     CString GetDriverKeyName(HANDLE Hub, ULONG ConnectionIndex);
     HDEVINFO _DriverNameToDeviceInst(const CString& sDrvKeyName, SP_DEVINFO_DATA& stDevInfoData);
     BOOL _DriverNameToDeviceProperties(const CString& sDrvKeyName, UsbDevicePnpStrings& stPnpStrings);
+    void _GetConnInfo( ULONG ulConnectionIndex, HANDLE hHubDevice, PUSB_NODE_CONNECTION_INFORMATION_EX* ppConnInfoEx, PUSB_NODE_CONNECTION_INFORMATION_EX_V2* ppConnInfoExV2 );
 };

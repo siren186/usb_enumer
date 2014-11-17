@@ -2,6 +2,142 @@
 #include "UsbEnumer.h"
 
 
+void CUsbEnumer::_GetConnInfo(
+    ULONG ulConnectionIndex,
+    HANDLE hHubDevice,
+    PUSB_NODE_CONNECTION_INFORMATION_EX* ppConnInfoEx,
+    PUSB_NODE_CONNECTION_INFORMATION_EX_V2* ppConnInfoExV2
+    )
+{
+    // 先取ConnInfoExV2
+    // 再取ConnInfoEx,若失败,再取ConnInfo
+    PUSB_NODE_CONNECTION_INFORMATION_EX    pConnInfoEx   = NULL;
+    PUSB_NODE_CONNECTION_INFORMATION_EX_V2 pConnInfoExV2 = NULL;
+    ULONG nBytes = 0;
+    BOOL bSuc = FALSE;
+
+    ULONG nBytesEx = sizeof(USB_NODE_CONNECTION_INFORMATION_EX) + (sizeof(USB_PIPE_INFO) * 30);
+    pConnInfoEx = (PUSB_NODE_CONNECTION_INFORMATION_EX)ALLOC(nBytesEx);
+    if (pConnInfoEx == NULL)
+    {
+        goto Exit0;
+    }
+    pConnInfoEx->ConnectionIndex = ulConnectionIndex;
+
+    pConnInfoExV2 = (PUSB_NODE_CONNECTION_INFORMATION_EX_V2)ALLOC(sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2));
+    if (pConnInfoExV2 == NULL)
+    {
+        goto Exit0;
+    }
+    pConnInfoExV2->ConnectionIndex = ulConnectionIndex;
+    pConnInfoExV2->Length = sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2);
+    pConnInfoExV2->SupportedUsbProtocols.Usb300 = 1;
+
+    // ConnInfoExV2
+    nBytes = 0;
+    bSuc = DeviceIoControl(
+        hHubDevice,
+        IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX_V2,
+        pConnInfoExV2,
+        sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2),
+        pConnInfoExV2,
+        sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2),
+        &nBytes,
+        NULL);
+    if (!bSuc || nBytes < sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2))
+    {
+        FREE(pConnInfoExV2);
+        pConnInfoExV2 = NULL;
+    }
+
+    // ConnInfoEx
+    bSuc = DeviceIoControl(
+        hHubDevice,
+        IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX,
+        pConnInfoEx,
+        nBytesEx,
+        pConnInfoEx,
+        nBytesEx,
+        &nBytesEx,
+        NULL);
+    if (bSuc)
+    {
+        if (pConnInfoExV2)
+        {
+            if (pConnInfoEx->Speed == UsbHighSpeed && pConnInfoExV2->Flags.DeviceIsOperatingAtSuperSpeedOrHigher)
+            {
+                pConnInfoEx->Speed = UsbSuperSpeed;
+            }
+        }
+    }
+    else
+    {
+        nBytes = sizeof(USB_NODE_CONNECTION_INFORMATION) + sizeof(USB_PIPE_INFO) * 30;
+        PUSB_NODE_CONNECTION_INFORMATION pConnInfo = (PUSB_NODE_CONNECTION_INFORMATION)ALLOC(nBytes);
+        if (pConnInfo == NULL)
+        {
+            goto Exit0;
+        }
+
+        pConnInfo->ConnectionIndex = ulConnectionIndex;
+
+        // ConnInfo
+        bSuc = DeviceIoControl(
+            hHubDevice,
+            IOCTL_USB_GET_NODE_CONNECTION_INFORMATION,
+            pConnInfo,
+            nBytes,
+            pConnInfo,
+            nBytes,
+            &nBytes,
+            NULL);
+        if (!bSuc)
+        {
+            FREE(pConnInfo);
+            goto Exit0;
+        }
+
+        pConnInfoEx->ConnectionIndex = pConnInfo->ConnectionIndex;
+        pConnInfoEx->DeviceDescriptor = pConnInfo->DeviceDescriptor;
+        pConnInfoEx->CurrentConfigurationValue = pConnInfo->CurrentConfigurationValue;
+        pConnInfoEx->Speed = pConnInfo->LowSpeed ? UsbLowSpeed : UsbFullSpeed;
+        pConnInfoEx->DeviceIsHub = pConnInfo->DeviceIsHub;
+        pConnInfoEx->DeviceAddress = pConnInfo->DeviceAddress;
+        pConnInfoEx->NumberOfOpenPipes = pConnInfo->NumberOfOpenPipes;
+        pConnInfoEx->ConnectionStatus = pConnInfo->ConnectionStatus;
+        memcpy(&pConnInfoEx->PipeList[0], &pConnInfo->PipeList[0], sizeof(USB_PIPE_INFO)* 30);
+
+        FREE(pConnInfo);
+    }
+
+    bSuc = TRUE; // 成功
+Exit0:
+
+    if (FALSE == bSuc)
+    {
+        if (pConnInfoEx)
+        {
+            FREE(pConnInfoEx);
+            pConnInfoEx = NULL;
+        }
+
+        if (pConnInfoExV2)
+        {
+            FREE(pConnInfoExV2);
+            pConnInfoExV2 = NULL;
+        }
+    }
+
+    if (ppConnInfoEx)
+    {
+        *ppConnInfoEx = pConnInfoEx;
+    }
+    if (ppConnInfoExV2)
+    {
+        *ppConnInfoExV2 = pConnInfoExV2;
+    }
+}
+
 VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
 {
     BOOL bSuc = 0;
