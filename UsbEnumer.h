@@ -58,40 +58,18 @@ public:
 
     void EnumAllUsb()
     {
-        TiXmlDocument* pXmlDoc = new TiXmlDocument();
-        TiXmlElement* pXmlElemRoot = new TiXmlElement("my_conputer");
-        pXmlDoc->LinkEndChild(pXmlElemRoot);
-
-        EnumerateHostControllers(pXmlElemRoot);
-        pXmlDoc->SaveFile("c:\\2.xml");
+        EnumerateHostControllers();
     }
 
-    VOID EnumerateHostControllers(TiXmlElement* pXmlFatherElem);
-
-    void _DoEnumHostControlers( HDEVINFO hDevInfo, PSP_DEVINFO_DATA pDeviceInfoData, const CString& sDevPath, TiXmlElement* pXmlElemRoot )
-    {
-        HANDLE hHCDev = CreateFile(sDevPath, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
-        if (hHCDev != INVALID_HANDLE_VALUE)
-        {
-            CString sDrvKeyName = GetHCDDriverKeyName(hHCDev);
-            if (!sDrvKeyName.IsEmpty())
-            {
-                TiXmlElement* pXmlElemControler = new TiXmlElement("controler");
-                pXmlElemRoot->LinkEndChild(pXmlElemControler);
-
-                EnumerateHostController(hHCDev, hDevInfo, pDeviceInfoData, pXmlElemControler);
-            }
-            CloseHandle(hHCDev);
-        }
-    }
+    VOID EnumerateHostControllers();
 
     BOOL IsAdbDevice(const CString& sFatherHubName, int nPortNum);
 
 private:
     void _MyReadUsbDescriptorRequest(PUSB_DESCRIPTOR_REQUEST pRequest, BOOL& bFindInterface0xff42);
-    VOID EnumerateHostController(_In_ HANDLE hHCDev, _In_ HDEVINFO deviceInfo, _In_ PSP_DEVINFO_DATA deviceInfoData, TiXmlElement* pXmlFatherElem);
-    VOID EnumerateHub(_In_ const CString& sHubName, TiXmlElement* pXmlFatherElem);
-    VOID EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlElement* pXmlFatherElem);
+    VOID EnumerateHostController(_In_ HANDLE hHCDev, _In_ HDEVINFO deviceInfo, _In_ PSP_DEVINFO_DATA deviceInfoData);
+    VOID EnumerateHub(_In_ const CString& sHubName);
+    VOID EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts);
     CString GetDriverKeyName(HANDLE Hub, ULONG ConnectionIndex);
     PUSB_DEVICE_PNP_STRINGS DriverNameToDeviceProperties(const CString& sDrvKeyName);
     BOOL DriverNameToDeviceInst(const CString& sDrvKeyName, _Out_ HDEVINFO *pDevInfo, _Out_writes_bytes_(sizeof(SP_DEVINFO_DATA)) PSP_DEVINFO_DATA pDevInfoData);

@@ -2,7 +2,7 @@
 #include "UsbEnumer.h"
 
 
-VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlElement* pXmlElemRootHub)
+VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
 {
     BOOL bSuc = 0;
     CString sDrvKeyName;
@@ -15,10 +15,6 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlEleme
 
     for (ULONG index = 1; index <= NumPorts; index++)
     {
-        TiXmlElement* pXmlElemPort = new TiXmlElement("port");
-        pXmlElemPort->SetAttribute("index", index);
-        pXmlElemRootHub->LinkEndChild(pXmlElemPort);
-
         pConnectionInfoEx   = NULL;
         pConnectionInfoExV2 = NULL;
         pConfigDesc = NULL;
@@ -153,15 +149,7 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlEleme
             if (!sExtHubName.IsEmpty() &&
                 sExtHubName.GetLength() < MAX_DRIVER_KEY_NAME)
             {
-                TiXmlElement* pXmlElemExtHub = new TiXmlElement("ext_hub");
-                if (pDevPnpStrings)
-                {
-                    pXmlElemExtHub->SetAttribute("name", CW2A((LPCTSTR)pDevPnpStrings->DeviceDesc));
-                }
-                pXmlElemExtHub->SetAttribute("node_name", CW2A(sExtHubName));
-                pXmlElemPort->LinkEndChild(pXmlElemExtHub);
-
-                EnumerateHub(sExtHubName, pXmlElemExtHub);
+                EnumerateHub(sExtHubName);
             }
         }
         else
@@ -193,8 +181,6 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlEleme
             {
                 _ParsepUsbDescriptorRequest(pConfigDesc, pXmlElemDev);
             }
-
-            pXmlElemPort->LinkEndChild(pXmlElemDev);
         }
 
         if (pDevPnpStrings)
@@ -805,28 +791,23 @@ Exit0:
     return sExtHubName;
 }
 
-VOID CUsbEnumer::EnumerateHostController(_In_ HANDLE hHCDev, _In_ HDEVINFO hDeviceInfo, _In_ PSP_DEVINFO_DATA deviceInfoData, TiXmlElement* pXmlElemControler)
+VOID CUsbEnumer::EnumerateHostController(_In_ HANDLE hHCDev, _In_ HDEVINFO hDeviceInfo, _In_ PSP_DEVINFO_DATA deviceInfoData)
 {
     CString sRootHubName = GetRootHubName(hHCDev);
     if (!sRootHubName.IsEmpty() && sRootHubName.GetLength() < MAX_DRIVER_KEY_NAME)
     {
-        TiXmlElement* pXmlElemRootHub = new TiXmlElement("root_hub");
-        pXmlElemControler->LinkEndChild(pXmlElemRootHub);
-
-        EnumerateHub(sRootHubName, pXmlElemRootHub);
+        EnumerateHub(sRootHubName);
     }
 }
 
-VOID CUsbEnumer::EnumerateHub(_In_ const CString& sHubName, TiXmlElement* pXmlElemRootHub)
+VOID CUsbEnumer::EnumerateHub(_In_ const CString& sHubName)
 {
-    PUSB_NODE_INFORMATION hubInfo    = NULL;
     HANDLE                hHubDevice = INVALID_HANDLE_VALUE;
     CString               sFullHubName;
     ULONG                 nBytes = 0;
     BOOL                  bSuc = FALSE;
-
-    hubInfo = (PUSB_NODE_INFORMATION)ALLOC(sizeof(USB_NODE_INFORMATION));
-    if (hubInfo == NULL)
+    PUSB_NODE_INFORMATION pNodeInfo = (PUSB_NODE_INFORMATION)ALLOC(sizeof(USB_NODE_INFORMATION));
+    if (pNodeInfo == NULL)
     {
         goto Exit0;
     }
@@ -841,9 +822,9 @@ VOID CUsbEnumer::EnumerateHub(_In_ const CString& sHubName, TiXmlElement* pXmlEl
     bSuc = DeviceIoControl(
         hHubDevice,
         IOCTL_USB_GET_NODE_INFORMATION,
-        hubInfo,
+        pNodeInfo,
         sizeof(USB_NODE_INFORMATION),
-        hubInfo,
+        pNodeInfo,
         sizeof(USB_NODE_INFORMATION),
         &nBytes,
         NULL);
@@ -852,18 +833,16 @@ VOID CUsbEnumer::EnumerateHub(_In_ const CString& sHubName, TiXmlElement* pXmlEl
         goto Exit0;
     }
 
-    EnumerateHubPorts(hHubDevice, hubInfo->u.HubInformation.HubDescriptor.bNumberOfPorts, pXmlElemRootHub);
+    EnumerateHubPorts(hHubDevice, pNodeInfo->u.HubInformation.HubDescriptor.bNumberOfPorts);
 
 Exit0:
+    if (pNodeInfo)
+    {
+        FREE(pNodeInfo);
+    }
     if (hHubDevice != INVALID_HANDLE_VALUE)
     {
         CloseHandle(hHubDevice);
-        hHubDevice = INVALID_HANDLE_VALUE;
-    }
-
-    if (hubInfo)
-    {
-        FREE(hubInfo);
     }
 }
 
@@ -1141,7 +1120,7 @@ Exit0:
     return sRootHubName;
 }
 
-VOID CUsbEnumer::EnumerateHostControllers(TiXmlElement* pXmlElemRoot)
+VOID CUsbEnumer::EnumerateHostControllers()
 {
 
     HDEVINFO hDevInfo = SetupDiGetClassDevs((LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, NULL, NULL, (DIGCF_PRESENT | DIGCF_DEVICEINTERFACE));
@@ -1165,7 +1144,16 @@ VOID CUsbEnumer::EnumerateHostControllers(TiXmlElement* pXmlElemRoot)
                 break;
             }
 
-            _DoEnumHostControlers(hDevInfo, &deviceInfoData, sDevPath, pXmlElemRoot);
+            HANDLE hHCDev = CreateFile(sDevPath, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+            if (hHCDev != INVALID_HANDLE_VALUE)
+            {
+                CString sDrvKeyName = GetHCDDriverKeyName(hHCDev);
+                if (!sDrvKeyName.IsEmpty())
+                {
+                    EnumerateHostController(hHCDev, hDevInfo, &deviceInfoData);
+                }
+                CloseHandle(hHCDev);
+            }
         }
         SetupDiDestroyDeviceInfoList(hDevInfo);
     }
