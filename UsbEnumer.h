@@ -19,7 +19,7 @@ typedef struct
 
     CString sDeviceInstanceId;
     CString sDeviceDesc;
-    CString sHwId;
+    CString sHardwareId;
     CString sService;
     CString sDeviceClass;
 } UsbDevicePnpStrings, *PUsbDevicePnpStrings;
@@ -45,13 +45,7 @@ typedef enum _TREEICON
 
 class CUsbEnumer
 {
-private:
-    int m_nTotalConnectedDevices;
-    int m_nTotalHubs;
-
 public:
-    CUsbEnumer() : m_nTotalConnectedDevices(0), m_nTotalHubs(0) {}
-
     void EnumAllUsb()
     {
         EnumerateHostControllers();
@@ -66,9 +60,7 @@ private:
     VOID EnumerateHostController(_In_ HANDLE hHCDev, _In_ HDEVINFO deviceInfo, _In_ PSP_DEVINFO_DATA deviceInfoData);
     VOID EnumerateHub(_In_ const CString& sHubName);
     VOID EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts);
-    BOOL DriverNameToDeviceProperties(const CString& sDrvKeyName, UsbDevicePnpStrings& stPnpStrings);
-    BOOL DriverNameToDeviceInst(const CString& sDrvKeyName, _Out_ HDEVINFO *pDevInfo, _Out_writes_bytes_(sizeof(SP_DEVINFO_DATA)) PSP_DEVINFO_DATA pDevInfoData);
-    CString GetDeviceProperty(
+    CString _GetDeviceProperty(
         _In_ HDEVINFO DeviceInfoSet,
         _In_ PSP_DEVINFO_DATA DeviceInfoData,
         _In_ DWORD Property);
@@ -85,5 +77,8 @@ private:
 private:
     // Из:"\\?\pci#ven_8086&dev_1e26&subsys_05771028&rev_04#3&11583659&1&e8#{3abf6f2d-71c4-462a-8a92-1e6861e6af27}"
     CString _GetDevPath( HDEVINFO hDevInfo, SP_DEVICE_INTERFACE_DATA stDeviceInterfaceData );
+    // Из:"{36fc9e60-c465-11cf-8056-444553540000}\0006"
     CString GetDriverKeyName(HANDLE Hub, ULONG ConnectionIndex);
+    HDEVINFO _DriverNameToDeviceInst(const CString& sDrvKeyName, SP_DEVINFO_DATA& stDevInfoData);
+    BOOL _DriverNameToDeviceProperties(const CString& sDrvKeyName, UsbDevicePnpStrings& stPnpStrings);
 };
