@@ -5,20 +5,16 @@
 VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
 {
     BOOL bSuc = 0;
-    CString sDrvKeyName;
     int icon = 0;
 
     PUSB_NODE_CONNECTION_INFORMATION_EX    pConnectionInfoEx   = NULL;
     PUSB_NODE_CONNECTION_INFORMATION_EX_V2 pConnectionInfoExV2 = NULL;
-    PUSB_DESCRIPTOR_REQUEST                pConfigDesc    = NULL;
-    PUsbDevicePnpStrings                pDevPnpStrings = NULL;
+    UsbDevicePnpStrings                    stDevPnpStrings;
 
     for (ULONG index = 1; index <= NumPorts; index++)
     {
         pConnectionInfoEx   = NULL;
         pConnectionInfoExV2 = NULL;
-        pConfigDesc = NULL;
-        pDevPnpStrings = NULL;
 
         ULONG nBytesEx = sizeof(USB_NODE_CONNECTION_INFORMATION_EX) + (sizeof(USB_PIPE_INFO) * 30);
         pConnectionInfoEx = (PUSB_NODE_CONNECTION_INFORMATION_EX)ALLOC(nBytesEx);
@@ -26,6 +22,7 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
         {
             break;
         }
+        pConnectionInfoEx->ConnectionIndex = index;
 
         pConnectionInfoExV2 = (PUSB_NODE_CONNECTION_INFORMATION_EX_V2)ALLOC(sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2));
         if (pConnectionInfoExV2 == NULL)
@@ -38,7 +35,8 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
         pConnectionInfoExV2->SupportedUsbProtocols.Usb300 = 1;
 
         ULONG nBytes = 0;
-        bSuc = DeviceIoControl(hHubDevice,
+        bSuc = DeviceIoControl(
+            hHubDevice,
             IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX_V2,
             pConnectionInfoExV2,
             sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2),
@@ -46,16 +44,14 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
             sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2),
             &nBytes,
             NULL);
-
         if (!bSuc || nBytes < sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2))
         {
             FREE(pConnectionInfoExV2);
             pConnectionInfoExV2 = NULL;
         }
 
-        pConnectionInfoEx->ConnectionIndex = index;
-
-        bSuc = DeviceIoControl(hHubDevice,
+        bSuc = DeviceIoControl(
+            hHubDevice,
             IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX,
             pConnectionInfoEx,
             nBytesEx,
@@ -63,7 +59,6 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
             nBytesEx,
             &nBytesEx,
             NULL);
-
         if (bSuc)
         {
             if (pConnectionInfoEx->Speed == UsbHighSpeed
@@ -90,7 +85,8 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
 
             pConnectionInfo->ConnectionIndex = index;
 
-            bSuc = DeviceIoControl(hHubDevice,
+            bSuc = DeviceIoControl(
+                hHubDevice,
                 IOCTL_USB_GET_NODE_CONNECTION_INFORMATION,
                 pConnectionInfo,
                 nBytes,
@@ -98,7 +94,6 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
                 nBytes,
                 &nBytes,
                 NULL);
-
             if (!bSuc)
             {
                 FREE(pConnectionInfo);
@@ -118,10 +113,7 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
             pConnectionInfoEx->DeviceAddress = pConnectionInfo->DeviceAddress;
             pConnectionInfoEx->NumberOfOpenPipes = pConnectionInfo->NumberOfOpenPipes;
             pConnectionInfoEx->ConnectionStatus = pConnectionInfo->ConnectionStatus;
-
-            memcpy(&pConnectionInfoEx->PipeList[0],
-                &pConnectionInfo->PipeList[0],
-                sizeof(USB_PIPE_INFO)* 30);
+            memcpy(&pConnectionInfoEx->PipeList[0], &pConnectionInfo->PipeList[0], sizeof(USB_PIPE_INFO)* 30);
 
             FREE(pConnectionInfo);
         }
@@ -129,15 +121,15 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
         if (pConnectionInfoEx->ConnectionStatus == DeviceConnected)
         {
             m_nTotalConnectedDevices++;
-            pConfigDesc = GetConfigDescriptor(hHubDevice, index, 0);
+            //pConfigDesc = GetConfigDescriptor(hHubDevice, index, 0);
         }
 
         if (pConnectionInfoEx->ConnectionStatus != NoDeviceConnected)
         {
-            sDrvKeyName = GetDriverKeyName(hHubDevice, index);
+            CString sDrvKeyName = GetDriverKeyName(hHubDevice, index);
             if (!sDrvKeyName.IsEmpty() && sDrvKeyName.GetLength() < MAX_DRIVER_KEY_NAME)
             {
-                pDevPnpStrings = DriverNameToDeviceProperties(sDrvKeyName);
+                DriverNameToDeviceProperties(sDrvKeyName, stDevPnpStrings);
             }
         }
 
@@ -146,8 +138,7 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
             m_nTotalHubs++;
 
             CString sExtHubName = GetExternalHubName(hHubDevice, index);
-            if (!sExtHubName.IsEmpty() &&
-                sExtHubName.GetLength() < MAX_DRIVER_KEY_NAME)
+            if (!sExtHubName.IsEmpty() && sExtHubName.GetLength() < MAX_DRIVER_KEY_NAME)
             {
                 EnumerateHub(sExtHubName);
             }
@@ -170,28 +161,6 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
             {
                 icon = BadDeviceIcon;
             }
-
-            TiXmlElement* pXmlElemDev = new TiXmlElement("device");
-            if (pDevPnpStrings)
-            {
-                pXmlElemDev->SetAttribute("name", CW2A((LPCTSTR)pDevPnpStrings->DeviceDesc));
-                pXmlElemDev->SetAttribute("device_id", CW2A((LPCTSTR)pDevPnpStrings->DeviceId));
-            }
-            if (pConfigDesc)
-            {
-                _ParsepUsbDescriptorRequest(pConfigDesc, pXmlElemDev);
-            }
-        }
-
-        if (pDevPnpStrings)
-        {
-            FREE(pDevPnpStrings);
-            pDevPnpStrings = NULL;
-        }
-        if (pConfigDesc)
-        {
-            FREE(pConfigDesc);
-            pConfigDesc = NULL;
         }
     }
 }
@@ -260,125 +229,86 @@ Exit0:
     return sRetDrvKeyName;
 }
 
-/*****************************************************************************
-
-DriverNameToDeviceProperties()
-
-Returns the Device properties of the DevNode with the matching DriverName.
-Returns NULL if the matching DevNode is not found.
-
-The caller should free the returned structure using FREE() macro
-
-*****************************************************************************/
-PUsbDevicePnpStrings CUsbEnumer::DriverNameToDeviceProperties(const CString& sDrvKeyName)
+BOOL CUsbEnumer::DriverNameToDeviceProperties(const CString& sDrvKeyName, UsbDevicePnpStrings& stPnpStrings)
 {
-    HDEVINFO        deviceInfo = INVALID_HANDLE_VALUE;
+    HDEVINFO        hDevInfo = INVALID_HANDLE_VALUE;
     SP_DEVINFO_DATA deviceInfoData = { 0 };
     ULONG           len;
     BOOL            bStatus;
-    PUsbDevicePnpStrings DevProps = NULL;
     DWORD           lastError;
+    TCHAR* pDevInstanceId = NULL;
 
     CString sTmpBuf;
 
-    // Allocate device propeties structure
-    DevProps = (PUsbDevicePnpStrings)ALLOC(sizeof(UsbDevicePnpStrings));
-
-    if (NULL == DevProps)
-    {
-        bStatus = FALSE;
-        goto Done;
-    }
-
     // Get device instance
-    bStatus = DriverNameToDeviceInst(sDrvKeyName, &deviceInfo, &deviceInfoData);
+    bStatus = DriverNameToDeviceInst(sDrvKeyName, &hDevInfo, &deviceInfoData);
     if (bStatus == FALSE)
     {
-        goto Done;
+        goto Exit0;
     }
 
     len = 0;
-    bStatus = SetupDiGetDeviceInstanceId(deviceInfo,
-        &deviceInfoData,
-        NULL,
-        0,
-        &len);
+    bStatus = SetupDiGetDeviceInstanceId(hDevInfo, &deviceInfoData, NULL, 0, &len);
     lastError = GetLastError();
-
-
     if (bStatus != FALSE && lastError != ERROR_INSUFFICIENT_BUFFER)
     {
         bStatus = FALSE;
-        goto Done;
+        goto Exit0;
     }
 
-    //
     // An extra byte is required for the terminating character
-    //
-
-    len++;
-
-    bStatus = SetupDiGetDeviceInstanceId(deviceInfo,
-        &deviceInfoData,
-        DevProps->DeviceId,
-        MAX_DRIVER_KEY_NAME,
-        &len);
+    pDevInstanceId = new TCHAR[++len];
+    bStatus = SetupDiGetDeviceInstanceId(hDevInfo, &deviceInfoData, pDevInstanceId, MAX_DRIVER_KEY_NAME, &len);
     if (bStatus == FALSE)
     {
-        goto Done;
+        goto Exit0;
     }
+    stPnpStrings.sDeviceInstanceId = pDevInstanceId;
 
-    sTmpBuf = GetDeviceProperty(deviceInfo,
+    sTmpBuf = GetDeviceProperty(hDevInfo,
         &deviceInfoData,
         SPDRP_DEVICEDESC);
     if (!sTmpBuf.IsEmpty())
     {
-        wcsncpy_s(DevProps->DeviceDesc, MAX_DRIVER_KEY_NAME, sTmpBuf, sTmpBuf.GetLength());
+        wcsncpy_s(stPnpStrings.DeviceDesc, MAX_DRIVER_KEY_NAME, sTmpBuf, sTmpBuf.GetLength());
     }
-
-    //    
-    // We don't fail if the following registry query fails as these fields are additional information only
-    //
-
-    sTmpBuf = GetDeviceProperty(deviceInfo,
-        &deviceInfoData,
-        SPDRP_HARDWAREID);
+    sTmpBuf = GetDeviceProperty(hDevInfo, &deviceInfoData, SPDRP_HARDWAREID);
     if (!sTmpBuf.IsEmpty())
     {
-        wcsncpy_s(DevProps->HwId, MAX_DRIVER_KEY_NAME, sTmpBuf, sTmpBuf.GetLength());
+        wcsncpy_s(stPnpStrings.HwId, MAX_DRIVER_KEY_NAME, sTmpBuf, sTmpBuf.GetLength());
     }
 
-    sTmpBuf = GetDeviceProperty(deviceInfo,
-        &deviceInfoData,
-        SPDRP_SERVICE);
+    sTmpBuf = GetDeviceProperty(hDevInfo, &deviceInfoData, SPDRP_SERVICE);
     if (!sTmpBuf.IsEmpty())
     {
-        wcsncpy_s(DevProps->Service, MAX_DRIVER_KEY_NAME, sTmpBuf, sTmpBuf.GetLength());
+        wcsncpy_s(stPnpStrings.Service, MAX_DRIVER_KEY_NAME, sTmpBuf, sTmpBuf.GetLength());
     }
 
-    GetDeviceProperty(deviceInfo,
-        &deviceInfoData,
-        SPDRP_CLASS);
+    GetDeviceProperty(hDevInfo, &deviceInfoData, SPDRP_CLASS);
     if (!sTmpBuf.IsEmpty())
     {
-        wcsncpy_s(DevProps->DeviceClass, MAX_DRIVER_KEY_NAME, sTmpBuf, sTmpBuf.GetLength());
+        wcsncpy_s(stPnpStrings.DeviceClass, MAX_DRIVER_KEY_NAME, sTmpBuf, sTmpBuf.GetLength());
     }
-Done:
-
-    if (deviceInfo != INVALID_HANDLE_VALUE)
+Exit0:
+    if (pDevInstanceId)
     {
-        SetupDiDestroyDeviceInfoList(deviceInfo);
+        delete pDevInstanceId;
     }
 
-    if (bStatus == FALSE)
+    if (hDevInfo != INVALID_HANDLE_VALUE)
     {
-        if (DevProps != NULL)
-        {
-            FREE(DevProps);
-            DevProps = NULL;
-        }
+        SetupDiDestroyDeviceInfoList(hDevInfo);
     }
-    return DevProps;
+
+//     if (bStatus == FALSE)
+//     {
+//         if (stPnpStrings != NULL)
+//         {
+//             FREE(stPnpStrings);
+//             stPnpStrings = NULL;
+//         }
+//     }
+    return bStatus;
 }
 
 /*****************************************************************************
@@ -851,7 +781,7 @@ Exit0:
 //
 //*****************************************************************************
 
-PSTRING_DESCRIPTOR_NODE CUsbEnumer::GetStringDescriptor(
+PStringDescriptorNode CUsbEnumer::GetStringDescriptor(
 HANDLE  hHubDevice,
 ULONG   ConnectionIndex,
 UCHAR   DescriptorIndex,
@@ -868,7 +798,7 @@ USHORT  LanguageID
 
     PUSB_DESCRIPTOR_REQUEST stringDescReq = NULL;
     PUSB_STRING_DESCRIPTOR  stringDesc = NULL;
-    PSTRING_DESCRIPTOR_NODE stringDescNode = NULL;
+    PStringDescriptorNode stringDescNode = NULL;
 
     nBytes = sizeof(stringDescReqBuf);
 
@@ -948,7 +878,7 @@ USHORT  LanguageID
     // node and copy the string descriptor to it.
     //
 
-    stringDescNode = (PSTRING_DESCRIPTOR_NODE)ALLOC(sizeof(STRING_DESCRIPTOR_NODE)+
+    stringDescNode = (PStringDescriptorNode)ALLOC(sizeof(StringDescriptorNode)+
         stringDesc->bLength);
 
     if (stringDescNode == NULL)
@@ -1192,7 +1122,7 @@ void CUsbEnumer::_MyReadUsbDescriptorRequest( PUSB_DESCRIPTOR_REQUEST pRequest, 
     } while ((commonDesc = GetNextDescriptor((PUSB_COMMON_DESCRIPTOR)ConfigDesc, ConfigDesc->wTotalLength, commonDesc, -1)) != NULL);
 }
 
-void CUsbEnumer::_ParsepUsbDescriptorRequest( PUSB_DESCRIPTOR_REQUEST pRequest, TiXmlElement* elem)
+void CUsbEnumer::_ParsepUsbDescriptorRequest( PUSB_DESCRIPTOR_REQUEST pRequest)
 {
     if (NULL == pRequest)
         return;
@@ -1206,11 +1136,11 @@ void CUsbEnumer::_ParsepUsbDescriptorRequest( PUSB_DESCRIPTOR_REQUEST pRequest, 
         {
         case USB_INTERFACE_DESCRIPTOR_TYPE:
             {
-                TiXmlElement* pXmlElemInterface = new TiXmlElement("interface_descriptor");
-                pXmlElemInterface->SetAttribute("bInterfaceClass", (int)((PUSB_INTERFACE_DESCRIPTOR)commonDesc)->bInterfaceClass);
-                pXmlElemInterface->SetAttribute("bInterfaceSubClass", (int)((PUSB_INTERFACE_DESCRIPTOR)commonDesc)->bInterfaceSubClass);
-                pXmlElemInterface->SetAttribute("bInterfaceProtocol", (int)((PUSB_INTERFACE_DESCRIPTOR)commonDesc)->bInterfaceProtocol);
-                elem->LinkEndChild(pXmlElemInterface);
+//                 TiXmlElement* pXmlElemInterface = new TiXmlElement("interface_descriptor");
+//                 pXmlElemInterface->SetAttribute("bInterfaceClass", (int)((PUSB_INTERFACE_DESCRIPTOR)commonDesc)->bInterfaceClass);
+//                 pXmlElemInterface->SetAttribute("bInterfaceSubClass", (int)((PUSB_INTERFACE_DESCRIPTOR)commonDesc)->bInterfaceSubClass);
+//                 pXmlElemInterface->SetAttribute("bInterfaceProtocol", (int)((PUSB_INTERFACE_DESCRIPTOR)commonDesc)->bInterfaceProtocol);
+//                 elem->LinkEndChild(pXmlElemInterface);
             }
             break;
         }
