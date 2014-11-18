@@ -375,22 +375,21 @@ CString CUsbEnumer::_GetDeviceProperty(HDEVINFO hDevInfo, PSP_DEVINFO_DATA pDevI
     LPTSTR lpBuf = NULL;
     DWORD dwDataBytes = 0;
 
-    BOOL bResult = ::SetupDiGetDeviceRegistryProperty(hDevInfo, pDevInfoData, dwProperty, NULL, NULL, 0, &dwDataBytes);
-    DWORD lastError = GetLastError();
-
-    if ((dwDataBytes == 0) || (bResult != FALSE && lastError != ERROR_INSUFFICIENT_BUFFER))
+    BOOL bSuc = ::SetupDiGetDeviceRegistryProperty(hDevInfo, pDevInfoData, dwProperty, NULL, NULL, 0, &dwDataBytes);
+    DWORD dwLastError = GetLastError();
+    if ((dwDataBytes == 0) || (bSuc != FALSE && dwLastError != ERROR_INSUFFICIENT_BUFFER))
     {
         goto Exit0;
     }
 
-    lpBuf = (LPTSTR)ALLOC(dwDataBytes + 1);
+    lpBuf = (LPTSTR)ALLOC(dwDataBytes);
     if (NULL == lpBuf)
     {
         goto Exit0;
     }
-    memset(lpBuf, 0, dwDataBytes + 1);
+    memset(lpBuf, 0, dwDataBytes);
 
-    bResult = SetupDiGetDeviceRegistryProperty(
+    bSuc = ::SetupDiGetDeviceRegistryProperty(
         hDevInfo,
         pDevInfoData,
         dwProperty,
@@ -398,10 +397,9 @@ CString CUsbEnumer::_GetDeviceProperty(HDEVINFO hDevInfo, PSP_DEVINFO_DATA pDevI
         (PBYTE)lpBuf,
         dwDataBytes,
         &dwDataBytes);
-
-    if (bResult)
+    if (bSuc)
     {
-        sPropertyValue.Append(lpBuf, dwDataBytes / sizeof(TCHAR));
+        sPropertyValue = lpBuf;
     }
 
 Exit0:
@@ -412,7 +410,7 @@ Exit0:
     return sPropertyValue;
 }
 
-PUSB_DESCRIPTOR_REQUEST CUsbEnumer::GetConfigDescriptor(HANDLE hHubDevice, ULONG ConnectionIndex, UCHAR DescriptorIndex)
+PUSB_DESCRIPTOR_REQUEST CUsbEnumer::_GetConfigDescriptor(HANDLE hHubDevice, ULONG ConnectionIndex, UCHAR DescriptorIndex)
 {
     BOOL    success = 0;
     ULONG   nBytes = 0;
@@ -462,7 +460,8 @@ PUSB_DESCRIPTOR_REQUEST CUsbEnumer::GetConfigDescriptor(HANDLE hHubDevice, ULONG
 
     // Now issue the get descriptor request.
     //
-    success = DeviceIoControl(hHubDevice,
+    success = DeviceIoControl(
+        hHubDevice,
         IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION,
         configDescReq,
         nBytes,
@@ -470,7 +469,6 @@ PUSB_DESCRIPTOR_REQUEST CUsbEnumer::GetConfigDescriptor(HANDLE hHubDevice, ULONG
         nBytes,
         &nBytesReturned,
         NULL);
-
     if (!success)
     {
         return NULL;
@@ -672,7 +670,7 @@ Exit0:
     }
 }
 
-PStringDescriptorNode CUsbEnumer::GetStringDescriptor(
+PStringDescriptorNode CUsbEnumer::_GetStringDescriptor(
 HANDLE  hHubDevice,
 ULONG   ConnectionIndex,
 UCHAR   DescriptorIndex,
@@ -949,7 +947,7 @@ BOOL CUsbEnumer::IsAdbDevice( const CString& sFatherHubName, int nPortNum )
     HANDLE hHubDevice = CreateFile(sFullHubName, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
     if (hHubDevice != INVALID_HANDLE_VALUE)
     {
-        PUSB_DESCRIPTOR_REQUEST configDesc = GetConfigDescriptor(hHubDevice, nPortNum, 0);
+        PUSB_DESCRIPTOR_REQUEST configDesc = _GetConfigDescriptor(hHubDevice, nPortNum, 0);
         _MyReadUsbDescriptorRequest(configDesc, bFindInterface0xff42);
         if (configDesc)
         {

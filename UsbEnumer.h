@@ -12,11 +12,6 @@
 
 typedef struct
 {
-    TCHAR DeviceDesc[MAX_DRIVER_KEY_NAME];
-    TCHAR HwId[MAX_DRIVER_KEY_NAME];
-    TCHAR Service[MAX_DRIVER_KEY_NAME];
-    TCHAR DeviceClass[MAX_DRIVER_KEY_NAME];
-
     CString sDeviceInstanceId;
     CString sDeviceDesc;
     CString sHardwareId;
@@ -72,11 +67,16 @@ private:
     VOID _EnumHubPorts(HANDLE hHubDevice, ULONG NumPorts);
 
 private:
-    CString _GetDeviceProperty(HDEVINFO DeviceInfoSet, PSP_DEVINFO_DATA DeviceInfoData, DWORD Property);
-    PUSB_DESCRIPTOR_REQUEST GetConfigDescriptor(HANDLE hHubDevice, ULONG ConnectionIndex, UCHAR DescriptorIndex);
-    PStringDescriptorNode GetStringDescriptor(HANDLE hHubDevice, ULONG ConnectionIndex, UCHAR DescriptorIndex, USHORT LanguageID);
-    PUSB_COMMON_DESCRIPTOR _GetNextDescriptor( _In_reads_bytes_(TotalLength) PUSB_COMMON_DESCRIPTOR FirstDescriptor, _In_ ULONG TotalLength, _In_ PUSB_COMMON_DESCRIPTOR StartDescriptor, _In_ long DescriptorType );
-    PUSB_COMMON_DESCRIPTOR _NextDescriptor(_In_ PUSB_COMMON_DESCRIPTOR Descriptor);
+    PUSB_DESCRIPTOR_REQUEST _GetConfigDescriptor(HANDLE hHubDevice, ULONG ConnectionIndex, UCHAR DescriptorIndex);
+    PStringDescriptorNode   _GetStringDescriptor(HANDLE hHubDevice, ULONG ConnectionIndex, UCHAR DescriptorIndex, USHORT LanguageID);
+
+    PUSB_COMMON_DESCRIPTOR  _GetNextDescriptor(
+        _In_reads_bytes_(TotalLength) PUSB_COMMON_DESCRIPTOR FirstDescriptor,
+        _In_ ULONG TotalLength,
+        _In_ PUSB_COMMON_DESCRIPTOR StartDescriptor,
+        _In_ long DescriptorType
+        );
+    PUSB_COMMON_DESCRIPTOR  _NextDescriptor(_In_ PUSB_COMMON_DESCRIPTOR Descriptor);
 
     void _MyReadUsbDescriptorRequest(PUSB_DESCRIPTOR_REQUEST pRequest, BOOL& bFindInterface0xff42);
     void _ParsepUsbDescriptorRequest( PUSB_DESCRIPTOR_REQUEST pRequest);
@@ -88,6 +88,7 @@ private:
     CString _GetExternalHubName(HANDLE Hub, ULONG ConnectionIndex);
     CString _GetHCDDriverKeyName(HANDLE hHCDev);
     CString _GetDriverKeyName(HANDLE Hub, ULONG ConnectionIndex); // Из:"{36fc9e60-c465-11cf-8056-444553540000}\0006"
+    CString _GetDeviceProperty(HDEVINFO DeviceInfoSet, PSP_DEVINFO_DATA DeviceInfoData, DWORD Property);
     BOOL    _DriverNameToDeviceProperties(const CString& sDrvKeyName, UsbDevicePnpStrings& stPnpStrings);
     void    _GetConnInfo(
         ULONG ulConnectionIndex,
