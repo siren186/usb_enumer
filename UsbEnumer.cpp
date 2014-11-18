@@ -34,7 +34,7 @@ void CUsbEnumer::_GetConnInfo(
 
     // ConnInfoExV2
     nBytesExV2 = 0;
-    bSuc = DeviceIoControl(
+    bSuc = ::DeviceIoControl(
         hHubDevice,
         IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX_V2,
         pConnInfoExV2,
@@ -50,7 +50,7 @@ void CUsbEnumer::_GetConnInfo(
     }
 
     // ConnInfoEx
-    bSuc = DeviceIoControl(
+    bSuc = ::DeviceIoControl(
         hHubDevice,
         IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX,
         pConnInfoEx,
@@ -79,7 +79,7 @@ void CUsbEnumer::_GetConnInfo(
             goto Exit0;
         }
         pConnInfo->ConnectionIndex = ulConnectionIndex;
-        bSuc = DeviceIoControl(
+        bSuc = ::DeviceIoControl(
             hHubDevice,
             IOCTL_USB_GET_NODE_CONNECTION_INFORMATION,
             pConnInfo,
@@ -143,7 +143,7 @@ void QueryDeviceDetail()
 
 }
 
-VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
+VOID CUsbEnumer::_EnumHubPorts(HANDLE hHubDevice, ULONG NumPorts)
 {
     BOOL bSuc = 0;
     int icon = 0;
@@ -174,7 +174,7 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
 
         if (pConnectionInfoEx->ConnectionStatus != NoDeviceConnected)
         {
-            CString sDrvKeyName = GetDriverKeyName(hHubDevice, index);
+            CString sDrvKeyName = _GetDriverKeyName(hHubDevice, index);
             if (!sDrvKeyName.IsEmpty() && sDrvKeyName.GetLength() < MAX_DRIVER_KEY_NAME)
             {
                 BOOL b = _DriverNameToDeviceProperties(sDrvKeyName, stDevPnpStrings);
@@ -183,10 +183,10 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
         
         if (pConnectionInfoEx->DeviceIsHub) // 若该节点是一个hub口
         {
-            CString sExtHubName = GetExternalHubName(hHubDevice, index);
+            CString sExtHubName = _GetExternalHubName(hHubDevice, index);
             if (!sExtHubName.IsEmpty() && sExtHubName.GetLength() < MAX_DRIVER_KEY_NAME)
             {
-                EnumerateHub(sExtHubName);
+                _EnumHub(sExtHubName);
             }
         }
         else
@@ -210,7 +210,7 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
     }
 }
 
-CString CUsbEnumer::GetDriverKeyName(HANDLE hHub, ULONG ConnectionIndex)
+CString CUsbEnumer::_GetDriverKeyName(HANDLE hHub, ULONG ConnectionIndex)
 {
     CString sRetDrvKeyName;
     PUSB_NODE_CONNECTION_DRIVERKEY_NAME pDriverKeyName = NULL;
@@ -291,7 +291,7 @@ BOOL CUsbEnumer::_DriverNameToDeviceProperties(const CString& sDrvKeyName, UsbDe
 
     // An extra byte is required for the terminating character
     pDevInstanceId = new TCHAR[++ulSize];
-    bSuc = SetupDiGetDeviceInstanceId(hDevInfo, &deviceInfoData, pDevInstanceId, MAX_DRIVER_KEY_NAME, &ulSize);
+    bSuc = ::SetupDiGetDeviceInstanceId(hDevInfo, &deviceInfoData, pDevInstanceId, MAX_DRIVER_KEY_NAME, &ulSize);
     if (bSuc)
     {
         stPnpStrings.sDeviceInstanceId = pDevInstanceId;
@@ -309,7 +309,7 @@ Exit0:
 
     if (INVALID_HANDLE_VALUE != hDevInfo)
     {
-        SetupDiDestroyDeviceInfoList(hDevInfo);
+        ::SetupDiDestroyDeviceInfoList(hDevInfo);
     }
 
     return bSuc;
@@ -369,23 +369,13 @@ Exit0:
     return hDevInfo;
 }
 
-CString CUsbEnumer::_GetDeviceProperty(
-    _In_ HDEVINFO hDevInfo,
-    _In_ PSP_DEVINFO_DATA pDevInfoData,
-    _In_ DWORD dwProperty)
+CString CUsbEnumer::_GetDeviceProperty(HDEVINFO hDevInfo, PSP_DEVINFO_DATA pDevInfoData, DWORD dwProperty)
 {
-    CString sRetBuffer;
+    CString sPropertyValue;
     LPTSTR lpBuf = NULL;
-
-//    DWORD nBufSize = nBufLen * sizeof(TCHAR);
     DWORD dwDataBytes = 0;
 
-//     if (pBuffer == NULL)
-//     {
-//         return FALSE;
-//     }
-
-    BOOL bResult = SetupDiGetDeviceRegistryProperty(hDevInfo, pDevInfoData, dwProperty, NULL, NULL, 0, &dwDataBytes);
+    BOOL bResult = ::SetupDiGetDeviceRegistryProperty(hDevInfo, pDevInfoData, dwProperty, NULL, NULL, 0, &dwDataBytes);
     DWORD lastError = GetLastError();
 
     if ((dwDataBytes == 0) || (bResult != FALSE && lastError != ERROR_INSUFFICIENT_BUFFER))
@@ -411,7 +401,7 @@ CString CUsbEnumer::_GetDeviceProperty(
 
     if (bResult)
     {
-        sRetBuffer.Append(lpBuf, dwDataBytes / sizeof(TCHAR));
+        sPropertyValue.Append(lpBuf, dwDataBytes / sizeof(TCHAR));
     }
 
 Exit0:
@@ -419,22 +409,8 @@ Exit0:
     {
         FREE(lpBuf);
     }
-    return sRetBuffer;
+    return sPropertyValue;
 }
-
-//*****************************************************************************
-//
-// GetConfigDescriptor()
-//
-// hHubDevice - Handle of the hub device containing the port from which the
-// Configuration Descriptor will be requested.
-//
-// ConnectionIndex - Identifies the port on the hub to which a device is
-// attached from which the Configuration Descriptor will be requested.
-//
-// DescriptorIndex - Configuration Descriptor index, zero based.
-//
-//*****************************************************************************
 
 PUSB_DESCRIPTOR_REQUEST CUsbEnumer::GetConfigDescriptor(HANDLE hHubDevice, ULONG ConnectionIndex, UCHAR DescriptorIndex)
 {
@@ -579,75 +555,59 @@ PUSB_DESCRIPTOR_REQUEST CUsbEnumer::GetConfigDescriptor(HANDLE hHubDevice, ULONG
     return configDescReq;
 }
 
-CString CUsbEnumer::GetExternalHubName(HANDLE Hub, ULONG ConnectionIndex)
+CString CUsbEnumer::_GetExternalHubName(HANDLE hHub, ULONG ulConnectionIndex)
 {
-    CString sExtHubName;
-    BOOL                        success = 0;
-    ULONG                       nBytes = 0;
+    CString                     sExtHubName;
+    BOOL                        bSuc = 0;
+    ULONG                       ulBytes = 0;
     USB_NODE_CONNECTION_NAME    stExtHubName;
     PUSB_NODE_CONNECTION_NAME   pExtHubName = NULL;
-    //PCHAR                       extHubNameA = NULL;
 
-    // Get the length of the name of the external hub attached to the
-    // specified port.
-    //
-    stExtHubName.ConnectionIndex = ConnectionIndex;
+    stExtHubName.ConnectionIndex = ulConnectionIndex;
 
-    success = DeviceIoControl(Hub,
+    bSuc = ::DeviceIoControl(hHub,
         IOCTL_USB_GET_NODE_CONNECTION_NAME,
         &stExtHubName,
         sizeof(stExtHubName),
         &stExtHubName,
         sizeof(stExtHubName),
-        &nBytes,
+        &ulBytes,
         NULL);
-
-    if (!success)
+    if (!bSuc)
     {
         goto Exit0;
     }
 
-    // Allocate space to hold the external hub name
-    //
-    nBytes = stExtHubName.ActualLength;
-
-    if (nBytes <= sizeof(stExtHubName))
+    ulBytes = stExtHubName.ActualLength;
+    if (ulBytes <= sizeof(stExtHubName))
     {
         goto Exit0;
     }
-
-    pExtHubName = (PUSB_NODE_CONNECTION_NAME)ALLOC(nBytes);
-
+    pExtHubName = (PUSB_NODE_CONNECTION_NAME)ALLOC(ulBytes);
     if (pExtHubName == NULL)
     {
         goto Exit0;
     }
 
-    // Get the name of the external hub attached to the specified port
-    //
-    pExtHubName->ConnectionIndex = ConnectionIndex;
+    pExtHubName->ConnectionIndex = ulConnectionIndex;
 
-    success = DeviceIoControl(Hub,
+    bSuc = ::DeviceIoControl(
+        hHub,
         IOCTL_USB_GET_NODE_CONNECTION_NAME,
         pExtHubName,
-        nBytes,
+        ulBytes,
         pExtHubName,
-        nBytes,
-        &nBytes,
+        ulBytes,
+        &ulBytes,
         NULL);
-
-    if (!success)
+    if (!bSuc)
     {
         goto Exit0;
     }
 
-    // Convert the External Hub name
-    //
     sExtHubName = (LPCTSTR)pExtHubName->NodeName;
 
 Exit0:
-    // There was an error, free anything that was allocated
-    //
     if (pExtHubName != NULL)
     {
         FREE(pExtHubName);
@@ -657,16 +617,16 @@ Exit0:
     return sExtHubName;
 }
 
-VOID CUsbEnumer::EnumerateHostController(_In_ HANDLE hHCDev, _In_ HDEVINFO hDeviceInfo, _In_ PSP_DEVINFO_DATA deviceInfoData)
+VOID CUsbEnumer::_EnumHostController(HANDLE hHCDev, HDEVINFO hDeviceInfo, PSP_DEVINFO_DATA deviceInfoData)
 {
-    CString sRootHubName = GetRootHubName(hHCDev);
+    CString sRootHubName = _GetRootHubName(hHCDev);
     if (!sRootHubName.IsEmpty() && sRootHubName.GetLength() < MAX_DRIVER_KEY_NAME)
     {
-        EnumerateHub(sRootHubName);
+        _EnumHub(sRootHubName);
     }
 }
 
-VOID CUsbEnumer::EnumerateHub(_In_ const CString& sHubName)
+VOID CUsbEnumer::_EnumHub(const CString& sHubName)
 {
     HANDLE                hHubDevice = INVALID_HANDLE_VALUE;
     CString               sFullHubName;
@@ -699,7 +659,7 @@ VOID CUsbEnumer::EnumerateHub(_In_ const CString& sHubName)
         goto Exit0;
     }
 
-    EnumerateHubPorts(hHubDevice, pNodeInfo->u.HubInformation.HubDescriptor.bNumberOfPorts);
+    _EnumHubPorts(hHubDevice, pNodeInfo->u.HubInformation.HubDescriptor.bNumberOfPorts);
 
 Exit0:
     if (pNodeInfo)
@@ -712,30 +672,12 @@ Exit0:
     }
 }
 
-
-//*****************************************************************************
-//
-// GetStringDescriptor()
-//
-// hHubDevice - Handle of the hub device containing the port from which the
-// String Descriptor will be requested.
-//
-// ConnectionIndex - Identifies the port on the hub to which a device is
-// attached from which the String Descriptor will be requested.
-//
-// DescriptorIndex - String Descriptor index.
-//
-// LanguageID - Language in which the string should be requested.
-//
-//*****************************************************************************
-
 PStringDescriptorNode CUsbEnumer::GetStringDescriptor(
 HANDLE  hHubDevice,
 ULONG   ConnectionIndex,
 UCHAR   DescriptorIndex,
 USHORT  LanguageID
 )
-
 {
     BOOL    success = 0;
     ULONG   nBytes = 0;
@@ -844,94 +786,77 @@ USHORT  LanguageID
     return stringDescNode;
 }
 
-CString CUsbEnumer::GetHCDDriverKeyName(HANDLE HCD)
+CString CUsbEnumer::_GetHCDDriverKeyName(HANDLE hHCDev)
 {
-    CString sDriverKeyName;
-    BOOL                    success = 0;
-    ULONG                   nBytes = 0;
-    USB_HCD_DRIVERKEY_NAME  driverKeyName = { 0 };
-    PUSB_HCD_DRIVERKEY_NAME pDriverKeyName = NULL;
+    CString                 sDriverKeyName;
+    BOOL                    bSuc = FALSE;
+    ULONG                   ulBytes = 0;
+    USB_HCD_DRIVERKEY_NAME  stHCDDriverKeyName = { 0 };
+    PUSB_HCD_DRIVERKEY_NAME pHCDDriverKeyName = NULL;
 
-    ZeroMemory(&driverKeyName, sizeof(driverKeyName));
-
-    // Get the length of the name of the driver key of the HCD
-    //
-    success = DeviceIoControl(HCD,
+    bSuc = ::DeviceIoControl(
+        hHCDev,
         IOCTL_GET_HCD_DRIVERKEY_NAME,
-        &driverKeyName,
-        sizeof(driverKeyName),
-        &driverKeyName,
-        sizeof(driverKeyName),
-        &nBytes,
+        &stHCDDriverKeyName,
+        sizeof(stHCDDriverKeyName),
+        &stHCDDriverKeyName,
+        sizeof(stHCDDriverKeyName),
+        &ulBytes,
         NULL);
-
-    if (!success)
+    if (!bSuc)
     {
         goto Exit0;
     }
 
-    // Allocate space to hold the driver key name
-    //
-    nBytes = driverKeyName.ActualLength;
-    if (nBytes <= sizeof(driverKeyName))
+    ulBytes = stHCDDriverKeyName.ActualLength;
+    if (ulBytes <= sizeof(stHCDDriverKeyName))
     {
         goto Exit0;
     }
 
     // Allocate size of name plus 1 for terminal zero
-    pDriverKeyName = (PUSB_HCD_DRIVERKEY_NAME)ALLOC(nBytes + 1);
-    if (pDriverKeyName == NULL)
+    pHCDDriverKeyName = (PUSB_HCD_DRIVERKEY_NAME)ALLOC(ulBytes + 1);
+    if (pHCDDriverKeyName == NULL)
     {
         goto Exit0;
     }
 
-    // Get the name of the driver key of the device attached to
-    // the specified port.
-    //
-
-    success = DeviceIoControl(HCD,
+    bSuc = ::DeviceIoControl(hHCDev,
         IOCTL_GET_HCD_DRIVERKEY_NAME,
-        pDriverKeyName,
-        nBytes,
-        pDriverKeyName,
-        nBytes,
-        &nBytes,
+        pHCDDriverKeyName,
+        ulBytes,
+        pHCDDriverKeyName,
+        ulBytes,
+        &ulBytes,
         NULL);
-    if (!success)
+    if (!bSuc)
     {
         goto Exit0;
     }
 
-    // Convert the driver key name
-    //
-    //driverKeyNameA = WideStrToMultiStr(driverKeyNameW->DriverKeyName, nBytes);
-    sDriverKeyName = pDriverKeyName->DriverKeyName;
+    sDriverKeyName = (LPCTSTR)pHCDDriverKeyName->DriverKeyName;
 
 Exit0:
-    // There was an error, free anything that was allocated
-    //
-    if (pDriverKeyName != NULL)
+    if (pHCDDriverKeyName != NULL)
     {
-        FREE(pDriverKeyName);
-        pDriverKeyName = NULL;
+        FREE(pHCDDriverKeyName);
+        pHCDDriverKeyName = NULL;
     }
 
     return sDriverKeyName;
 }
 
-CString CUsbEnumer::GetRootHubName(HANDLE HostController)
+CString CUsbEnumer::_GetRootHubName(HANDLE hHostController)
 {
-    CString sRootHubName;
-    BOOL                success = 0;
+    CString             sRootHubName;
+    BOOL                bSuc = FALSE;
     ULONG               nBytes = 0;
     USB_ROOT_HUB_NAME   stRootHubName;
     PUSB_ROOT_HUB_NAME  pRootHubName = NULL;
-    //PCHAR               rootHubNameA = NULL;
 
-    // Get the length of the name of the Root Hub attached to the
-    // Host Controller
-    //
-    success = DeviceIoControl(HostController,
+    // 读大小
+    bSuc = ::DeviceIoControl(
+        hHostController,
         IOCTL_USB_GET_ROOT_HUB_NAME,
         0,
         0,
@@ -939,25 +864,22 @@ CString CUsbEnumer::GetRootHubName(HANDLE HostController)
         sizeof(stRootHubName),
         &nBytes,
         NULL);
-
-    if (!success)
+    if (!bSuc)
     {
         goto Exit0;
     }
 
-    // Allocate space to hold the Root Hub name
-    //
+    // 申请内存
     nBytes = stRootHubName.ActualLength;
-
     pRootHubName = (PUSB_ROOT_HUB_NAME)ALLOC(nBytes);
     if (pRootHubName == NULL)
     {
         goto Exit0;
     }
 
-    // Get the name of the Root Hub attached to the Host Controller
-    //
-    success = DeviceIoControl(HostController,
+    // 取值
+    bSuc = ::DeviceIoControl(
+        hHostController,
         IOCTL_USB_GET_ROOT_HUB_NAME,
         NULL,
         0,
@@ -965,27 +887,22 @@ CString CUsbEnumer::GetRootHubName(HANDLE HostController)
         nBytes,
         &nBytes,
         NULL);
-    if (!success)
+    if (!bSuc)
     {
         goto Exit0;
     }
 
-    // Convert the Root Hub name
-    //
-    //rootHubNameA = WideStrToMultiStr(rootHubNameW->RootHubName, nBytes);
-    // TODO: 小心这个地方的赋值,是否只是赋值了一个字符
     sRootHubName = (LPCTSTR)pRootHubName->RootHubName;
 
 Exit0:
     if (pRootHubName != NULL)
     {
         FREE(pRootHubName);
-        pRootHubName = NULL;
     }
     return sRootHubName;
 }
 
-VOID CUsbEnumer::EnumerateHostControllers()
+VOID CUsbEnumer::_EnumHostControllers()
 {
     HDEVINFO hDevInfo = ::SetupDiGetClassDevs((LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, NULL, NULL, (DIGCF_PRESENT | DIGCF_DEVICEINTERFACE));
     if (INVALID_HANDLE_VALUE != hDevInfo)
@@ -1011,10 +928,10 @@ VOID CUsbEnumer::EnumerateHostControllers()
             HANDLE hHCDev = ::CreateFile(sDevPath, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
             if (hHCDev != INVALID_HANDLE_VALUE)
             {
-                CString sDrvKeyName = GetHCDDriverKeyName(hHCDev);
+                CString sDrvKeyName = _GetHCDDriverKeyName(hHCDev);
                 if (!sDrvKeyName.IsEmpty())
                 {
-                    EnumerateHostController(hHCDev, hDevInfo, &deviceInfoData);
+                    _EnumHostController(hHCDev, hDevInfo, &deviceInfoData);
                 }
                 ::CloseHandle(hHCDev);
             }
@@ -1065,7 +982,7 @@ void CUsbEnumer::_MyReadUsbDescriptorRequest( PUSB_DESCRIPTOR_REQUEST pRequest, 
             }
             break;
         }
-    } while ((commonDesc = GetNextDescriptor((PUSB_COMMON_DESCRIPTOR)ConfigDesc, ConfigDesc->wTotalLength, commonDesc, -1)) != NULL);
+    } while ((commonDesc = _GetNextDescriptor((PUSB_COMMON_DESCRIPTOR)ConfigDesc, ConfigDesc->wTotalLength, commonDesc, -1)) != NULL);
 }
 
 void CUsbEnumer::_ParsepUsbDescriptorRequest( PUSB_DESCRIPTOR_REQUEST pRequest)
@@ -1090,10 +1007,10 @@ void CUsbEnumer::_ParsepUsbDescriptorRequest( PUSB_DESCRIPTOR_REQUEST pRequest)
             }
             break;
         }
-    } while ((commonDesc = GetNextDescriptor((PUSB_COMMON_DESCRIPTOR)ConfigDesc, ConfigDesc->wTotalLength, commonDesc, -1)) != NULL);
+    } while ((commonDesc = _GetNextDescriptor((PUSB_COMMON_DESCRIPTOR)ConfigDesc, ConfigDesc->wTotalLength, commonDesc, -1)) != NULL);
 }
 
-PUSB_COMMON_DESCRIPTOR CUsbEnumer::GetNextDescriptor(
+PUSB_COMMON_DESCRIPTOR CUsbEnumer::_GetNextDescriptor(
     _In_reads_bytes_(TotalLength) PUSB_COMMON_DESCRIPTOR FirstDescriptor,
     _In_ ULONG TotalLength,
     _In_ PUSB_COMMON_DESCRIPTOR StartDescriptor,
@@ -1106,19 +1023,19 @@ PUSB_COMMON_DESCRIPTOR CUsbEnumer::GetNextDescriptor(
     endDescriptor = (PUSB_COMMON_DESCRIPTOR)((PUCHAR)FirstDescriptor + TotalLength);
 
     if (StartDescriptor >= endDescriptor ||
-        NextDescriptor(StartDescriptor)>= endDescriptor)
+        _NextDescriptor(StartDescriptor)>= endDescriptor)
     {
         return NULL;
     }
 
     if (DescriptorType == -1) // -1 means any type
     {
-        return NextDescriptor(StartDescriptor);
+        return _NextDescriptor(StartDescriptor);
     }
 
     currentDescriptor = StartDescriptor;
 
-    while (((currentDescriptor = NextDescriptor(currentDescriptor)) < endDescriptor)
+    while (((currentDescriptor = _NextDescriptor(currentDescriptor)) < endDescriptor)
         && currentDescriptor != NULL)
     {
         if (currentDescriptor->bDescriptorType == (UCHAR)DescriptorType)
@@ -1129,7 +1046,7 @@ PUSB_COMMON_DESCRIPTOR CUsbEnumer::GetNextDescriptor(
     return NULL;
 }
 
-PUSB_COMMON_DESCRIPTOR CUsbEnumer::NextDescriptor(_In_ PUSB_COMMON_DESCRIPTOR Descriptor)
+PUSB_COMMON_DESCRIPTOR CUsbEnumer::_NextDescriptor(_In_ PUSB_COMMON_DESCRIPTOR Descriptor)
 {
     if (Descriptor->bLength == 0)
     {

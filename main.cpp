@@ -10,7 +10,7 @@ int _tmain(int argc, _TCHAR* argv[])
     int     nPort    = 1;
 
     CUsbEnumer usb;
-    usb.EnumAllUsb();
+    usb.EnumAllUsbDevices();
     //usb.EnumerateHostControllers();
 //    BOOL bIsAdb = usb.IsAdbDevice(sHubName, nPort);
 
