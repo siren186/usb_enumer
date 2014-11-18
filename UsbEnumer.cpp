@@ -13,28 +13,27 @@ void CUsbEnumer::_GetConnInfo(
     // 再取ConnInfoEx,若失败,再取ConnInfo
     PUSB_NODE_CONNECTION_INFORMATION_EX    pConnInfoEx   = NULL;
     PUSB_NODE_CONNECTION_INFORMATION_EX_V2 pConnInfoExV2 = NULL;
-    ULONG nBytes = 0;
+    ULONG nBytesExV2 = 0;
     BOOL bSuc = FALSE;
+    int nRetCode = 0;
 
+    // 申请内存
     ULONG nBytesEx = sizeof(USB_NODE_CONNECTION_INFORMATION_EX) + (sizeof(USB_PIPE_INFO) * 30);
-    pConnInfoEx = (PUSB_NODE_CONNECTION_INFORMATION_EX)ALLOC(nBytesEx);
-    if (pConnInfoEx == NULL)
-    {
-        goto Exit0;
-    }
-    pConnInfoEx->ConnectionIndex = ulConnectionIndex;
-
+    pConnInfoEx   = (PUSB_NODE_CONNECTION_INFORMATION_EX)ALLOC(nBytesEx);
     pConnInfoExV2 = (PUSB_NODE_CONNECTION_INFORMATION_EX_V2)ALLOC(sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2));
-    if (pConnInfoExV2 == NULL)
+    if (NULL == pConnInfoExV2 || NULL == pConnInfoEx)
     {
         goto Exit0;
     }
+
+    // 初始化结构体    
+    pConnInfoEx->ConnectionIndex   = ulConnectionIndex;
     pConnInfoExV2->ConnectionIndex = ulConnectionIndex;
-    pConnInfoExV2->Length = sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2);
+    pConnInfoExV2->Length          = sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2);
     pConnInfoExV2->SupportedUsbProtocols.Usb300 = 1;
 
     // ConnInfoExV2
-    nBytes = 0;
+    nBytesExV2 = 0;
     bSuc = DeviceIoControl(
         hHubDevice,
         IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX_V2,
@@ -42,9 +41,9 @@ void CUsbEnumer::_GetConnInfo(
         sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2),
         pConnInfoExV2,
         sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2),
-        &nBytes,
+        &nBytesExV2,
         NULL);
-    if (!bSuc || nBytes < sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2))
+    if (!bSuc || nBytesExV2 < sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2))
     {
         FREE(pConnInfoExV2);
         pConnInfoExV2 = NULL;
@@ -72,16 +71,14 @@ void CUsbEnumer::_GetConnInfo(
     }
     else
     {
-        nBytes = sizeof(USB_NODE_CONNECTION_INFORMATION) + sizeof(USB_PIPE_INFO) * 30;
+        // ConnInfo
+        ULONG nBytes = sizeof(USB_NODE_CONNECTION_INFORMATION) + sizeof(USB_PIPE_INFO) * 30;
         PUSB_NODE_CONNECTION_INFORMATION pConnInfo = (PUSB_NODE_CONNECTION_INFORMATION)ALLOC(nBytes);
-        if (pConnInfo == NULL)
+        if (!pConnInfo)
         {
             goto Exit0;
         }
-
         pConnInfo->ConnectionIndex = ulConnectionIndex;
-
-        // ConnInfo
         bSuc = DeviceIoControl(
             hHubDevice,
             IOCTL_USB_GET_NODE_CONNECTION_INFORMATION,
@@ -91,26 +88,29 @@ void CUsbEnumer::_GetConnInfo(
             nBytes,
             &nBytes,
             NULL);
-        if (!bSuc)
+        if (bSuc)
         {
-            FREE(pConnInfo);
-            goto Exit0;
+            pConnInfoEx->ConnectionIndex = pConnInfo->ConnectionIndex;
+            pConnInfoEx->DeviceDescriptor = pConnInfo->DeviceDescriptor;
+            pConnInfoEx->CurrentConfigurationValue = pConnInfo->CurrentConfigurationValue;
+            pConnInfoEx->Speed = pConnInfo->LowSpeed ? UsbLowSpeed : UsbFullSpeed;
+            pConnInfoEx->DeviceIsHub = pConnInfo->DeviceIsHub;
+            pConnInfoEx->DeviceAddress = pConnInfo->DeviceAddress;
+            pConnInfoEx->NumberOfOpenPipes = pConnInfo->NumberOfOpenPipes;
+            pConnInfoEx->ConnectionStatus = pConnInfo->ConnectionStatus;
+            memcpy(&pConnInfoEx->PipeList[0], &pConnInfo->PipeList[0], sizeof(USB_PIPE_INFO)* 30);
         }
-
-        pConnInfoEx->ConnectionIndex = pConnInfo->ConnectionIndex;
-        pConnInfoEx->DeviceDescriptor = pConnInfo->DeviceDescriptor;
-        pConnInfoEx->CurrentConfigurationValue = pConnInfo->CurrentConfigurationValue;
-        pConnInfoEx->Speed = pConnInfo->LowSpeed ? UsbLowSpeed : UsbFullSpeed;
-        pConnInfoEx->DeviceIsHub = pConnInfo->DeviceIsHub;
-        pConnInfoEx->DeviceAddress = pConnInfo->DeviceAddress;
-        pConnInfoEx->NumberOfOpenPipes = pConnInfo->NumberOfOpenPipes;
-        pConnInfoEx->ConnectionStatus = pConnInfo->ConnectionStatus;
-        memcpy(&pConnInfoEx->PipeList[0], &pConnInfo->PipeList[0], sizeof(USB_PIPE_INFO)* 30);
+        else
+        {
+            FREE(pConnInfoEx);   pConnInfoEx   = NULL;
+            FREE(pConnInfoExV2); pConnInfoExV2 = NULL;
+        }
 
         FREE(pConnInfo);
     }
 
-    bSuc = TRUE; // 成功
+    bSuc = TRUE;
+
 Exit0:
 
     if (FALSE == bSuc)
@@ -138,6 +138,11 @@ Exit0:
     }
 }
 
+void QueryDeviceDetail()
+{
+
+}
+
 VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
 {
     BOOL bSuc = 0;
@@ -151,107 +156,15 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
     {
         pConnectionInfoEx   = NULL;
         pConnectionInfoExV2 = NULL;
+        _GetConnInfo(index, hHubDevice, &pConnectionInfoEx, &pConnectionInfoExV2);
 
-        ULONG nBytesEx = sizeof(USB_NODE_CONNECTION_INFORMATION_EX) + (sizeof(USB_PIPE_INFO) * 30);
-        pConnectionInfoEx = (PUSB_NODE_CONNECTION_INFORMATION_EX)ALLOC(nBytesEx);
-        if (pConnectionInfoEx == NULL)
+        if (NULL == pConnectionInfoEx)
         {
-            break;
-        }
-        pConnectionInfoEx->ConnectionIndex = index;
-
-        pConnectionInfoExV2 = (PUSB_NODE_CONNECTION_INFORMATION_EX_V2)ALLOC(sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2));
-        if (pConnectionInfoExV2 == NULL)
-        {
-            FREE(pConnectionInfoEx);
-            break;
-        }
-        pConnectionInfoExV2->ConnectionIndex = index;
-        pConnectionInfoExV2->Length = sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2);
-        pConnectionInfoExV2->SupportedUsbProtocols.Usb300 = 1;
-
-        ULONG nBytes = 0;
-        bSuc = DeviceIoControl(
-            hHubDevice,
-            IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX_V2,
-            pConnectionInfoExV2,
-            sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2),
-            pConnectionInfoExV2,
-            sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2),
-            &nBytes,
-            NULL);
-        if (!bSuc || nBytes < sizeof(USB_NODE_CONNECTION_INFORMATION_EX_V2))
-        {
-            FREE(pConnectionInfoExV2);
-            pConnectionInfoExV2 = NULL;
-        }
-
-        bSuc = DeviceIoControl(
-            hHubDevice,
-            IOCTL_USB_GET_NODE_CONNECTION_INFORMATION_EX,
-            pConnectionInfoEx,
-            nBytesEx,
-            pConnectionInfoEx,
-            nBytesEx,
-            &nBytesEx,
-            NULL);
-        if (bSuc)
-        {
-            if (pConnectionInfoEx->Speed == UsbHighSpeed
-                && pConnectionInfoExV2 != NULL
-                && pConnectionInfoExV2->Flags.DeviceIsOperatingAtSuperSpeedOrHigher)
+            if (pConnectionInfoExV2)
             {
-                pConnectionInfoEx->Speed = UsbSuperSpeed;
+                FREE(pConnectionInfoExV2);
             }
-        }
-        else
-        {
-            nBytes = sizeof(USB_NODE_CONNECTION_INFORMATION) + sizeof(USB_PIPE_INFO) * 30;
-
-            PUSB_NODE_CONNECTION_INFORMATION pConnectionInfo = (PUSB_NODE_CONNECTION_INFORMATION)ALLOC(nBytes);
-            if (pConnectionInfo == NULL)
-            {
-                FREE(pConnectionInfoEx);
-                if (pConnectionInfoExV2 != NULL)
-                {
-                    FREE(pConnectionInfoExV2);
-                }
-                continue;
-            }
-
-            pConnectionInfo->ConnectionIndex = index;
-
-            bSuc = DeviceIoControl(
-                hHubDevice,
-                IOCTL_USB_GET_NODE_CONNECTION_INFORMATION,
-                pConnectionInfo,
-                nBytes,
-                pConnectionInfo,
-                nBytes,
-                &nBytes,
-                NULL);
-            if (!bSuc)
-            {
-                FREE(pConnectionInfo);
-                FREE(pConnectionInfoEx);
-                if (pConnectionInfoExV2 != NULL)
-                {
-                    FREE(pConnectionInfoExV2);
-                }
-                continue;
-            }
-
-            pConnectionInfoEx->ConnectionIndex = pConnectionInfo->ConnectionIndex;
-            pConnectionInfoEx->DeviceDescriptor = pConnectionInfo->DeviceDescriptor;
-            pConnectionInfoEx->CurrentConfigurationValue = pConnectionInfo->CurrentConfigurationValue;
-            pConnectionInfoEx->Speed = pConnectionInfo->LowSpeed ? UsbLowSpeed : UsbFullSpeed;
-            pConnectionInfoEx->DeviceIsHub = pConnectionInfo->DeviceIsHub;
-            pConnectionInfoEx->DeviceAddress = pConnectionInfo->DeviceAddress;
-            pConnectionInfoEx->NumberOfOpenPipes = pConnectionInfo->NumberOfOpenPipes;
-            pConnectionInfoEx->ConnectionStatus = pConnectionInfo->ConnectionStatus;
-            memcpy(&pConnectionInfoEx->PipeList[0], &pConnectionInfo->PipeList[0], sizeof(USB_PIPE_INFO)* 30);
-
-            FREE(pConnectionInfo);
+            continue;
         }
 
         if (pConnectionInfoEx->ConnectionStatus == DeviceConnected)
@@ -267,8 +180,8 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
                 BOOL b = _DriverNameToDeviceProperties(sDrvKeyName, stDevPnpStrings);
             }
         }
-
-        if (pConnectionInfoEx->DeviceIsHub)
+        
+        if (pConnectionInfoEx->DeviceIsHub) // 若该节点是一个hub口
         {
             CString sExtHubName = GetExternalHubName(hHubDevice, index);
             if (!sExtHubName.IsEmpty() && sExtHubName.GetLength() < MAX_DRIVER_KEY_NAME)
@@ -278,10 +191,9 @@ VOID CUsbEnumer::EnumerateHubPorts(HANDLE hHubDevice, ULONG NumPorts)
         }
         else
         {
-            if (pConnectionInfoEx->ConnectionStatus == NoDeviceConnected)
+            if (pConnectionInfoExV2 && pConnectionInfoEx->ConnectionStatus == NoDeviceConnected)
             {
-                if (pConnectionInfoExV2 != NULL &&
-                    pConnectionInfoExV2->SupportedUsbProtocols.Usb300 == 1)
+                if (pConnectionInfoExV2->SupportedUsbProtocols.Usb300 == 1)
                     icon = NoSsDeviceIcon;
                 else
                     icon = NoDeviceIcon;
@@ -939,7 +851,6 @@ CString CUsbEnumer::GetHCDDriverKeyName(HANDLE HCD)
     ULONG                   nBytes = 0;
     USB_HCD_DRIVERKEY_NAME  driverKeyName = { 0 };
     PUSB_HCD_DRIVERKEY_NAME pDriverKeyName = NULL;
-    //PCHAR                   driverKeyNameA = NULL;
 
     ZeroMemory(&driverKeyName, sizeof(driverKeyName));
 
@@ -1076,17 +987,16 @@ Exit0:
 
 VOID CUsbEnumer::EnumerateHostControllers()
 {
-
-    HDEVINFO hDevInfo = SetupDiGetClassDevs((LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, NULL, NULL, (DIGCF_PRESENT | DIGCF_DEVICEINTERFACE));
+    HDEVINFO hDevInfo = ::SetupDiGetClassDevs((LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, NULL, NULL, (DIGCF_PRESENT | DIGCF_DEVICEINTERFACE));
     if (INVALID_HANDLE_VALUE != hDevInfo)
     {
         SP_DEVICE_INTERFACE_DATA stInterfaceData = {0};
         SP_DEVINFO_DATA deviceInfoData = {0};
         deviceInfoData.cbSize = sizeof(SP_DEVINFO_DATA);
-        for (DWORD index=0; SetupDiEnumDeviceInfo(hDevInfo, index, &deviceInfoData); index++)
+        for (DWORD index=0; ::SetupDiEnumDeviceInfo(hDevInfo, index, &deviceInfoData); index++)
         {
             stInterfaceData.cbSize = sizeof(SP_DEVICE_INTERFACE_DATA);
-            BOOL bSuc = SetupDiEnumDeviceInterfaces(hDevInfo, 0, (LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, index, &stInterfaceData);
+            BOOL bSuc = ::SetupDiEnumDeviceInterfaces(hDevInfo, 0, (LPGUID)&GUID_CLASS_USB_HOST_CONTROLLER, index, &stInterfaceData);
             if (!bSuc)
             {
                 break;
@@ -1098,7 +1008,7 @@ VOID CUsbEnumer::EnumerateHostControllers()
                 break;
             }
 
-            HANDLE hHCDev = CreateFile(sDevPath, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
+            HANDLE hHCDev = ::CreateFile(sDevPath, GENERIC_WRITE, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
             if (hHCDev != INVALID_HANDLE_VALUE)
             {
                 CString sDrvKeyName = GetHCDDriverKeyName(hHCDev);
@@ -1106,10 +1016,10 @@ VOID CUsbEnumer::EnumerateHostControllers()
                 {
                     EnumerateHostController(hHCDev, hDevInfo, &deviceInfoData);
                 }
-                CloseHandle(hHCDev);
+                ::CloseHandle(hHCDev);
             }
         }
-        SetupDiDestroyDeviceInfoList(hDevInfo);
+        ::SetupDiDestroyDeviceInfoList(hDevInfo);
     }
 }
 
