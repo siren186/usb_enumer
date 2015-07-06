@@ -1,5 +1,4 @@
-
-从微软usb view里面扣出的一小段代码,用于枚举USB设备列表：
+枚举USB设备的小例子
 
 > * usb_host_controler <i class="icon-chevron-sign-right"></i> root_hub <i class="icon-chevron-sign-right"></i> ext_hub <i class="icon-chevron-sign-right"></i> port <i class="icon-chevron-sign-right"></i> device
 
