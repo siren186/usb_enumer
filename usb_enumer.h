@@ -1,24 +1,7 @@
 #pragma once
 #include "tinyxml\tinyxml.h"
 
-
-
-#define ALLOC(dwBytes) GlobalAlloc(GPTR,(dwBytes))
-#define FREE(hMem)     GlobalFree((hMem))
-
-#define MAX_DRIVER_KEY_NAME 256
-#define MAX_DEVICE_PROP 200
-#define NUM_STRING_DESC_TO_GET 32
-
-typedef struct
-{
-    CString sDeviceInstanceId;
-    CString sDeviceDesc;
-    CString sHardwareId;
-    CString sService;
-    CString sDeviceClass;
-} UsbDevicePnpStrings, *PUsbDevicePnpStrings;
-
+/*
 typedef struct _STRING_DESCRIPTOR_NODE
 {
     struct _STRING_DESCRIPTOR_NODE *Next;
@@ -26,6 +9,16 @@ typedef struct _STRING_DESCRIPTOR_NODE
     USHORT                          LanguageID;
     USB_STRING_DESCRIPTOR           StringDescriptor[1];
 } StringDescriptorNode, *PStringDescriptorNode;
+*/
+
+struct UsbDevicePnpStrings
+{
+    CString sDeviceInstanceId;
+    CString sDeviceDesc;
+    CString sHardwareId;
+    CString sService;
+    CString sDeviceClass;
+};
 
 typedef enum _TREEICON
 {
@@ -40,13 +33,14 @@ typedef enum _TREEICON
 
 class CUsbEnumer
 {
-public:
-    void EnumAllUsbDevices()
-    {
-        _EnumHostControllers();
-    }
+private:
+    TiXmlDocument* m_pXmlDoc;
 
-    BOOL IsAdbDevice(const CString& sFatherHubName, int nPortNum);
+public:
+    CUsbEnumer();
+    void EnumAllUsbDevices();
+    TiXmlDocument* GetEnumResult() const;
+    void ClearEnumResult();
 
 private:
     /**
@@ -61,15 +55,14 @@ private:
      * 一个root hub上拓展出若干个port口.
      * 一个port口上,可能插了hub,也可能插了具体设备(如手机),也可能什么都没插.
      */
-    VOID _EnumHostControllers();
-    VOID _EnumHostController(HANDLE hHCDev, HDEVINFO deviceInfo, PSP_DEVINFO_DATA deviceInfoData);
-    VOID _EnumHub(const CString& sHubName);
-    VOID _EnumHubPorts(HANDLE hHubDevice, ULONG NumPorts);
+    VOID _EnumHostControllers(TiXmlElement* pXmlConputer);
+    VOID _EnumHostController(HANDLE hHCDev, HDEVINFO deviceInfo, PSP_DEVINFO_DATA deviceInfoData, TiXmlElement* pXmlHostController);
+    VOID _EnumHub(const CString& sHubName, TiXmlElement* pXmlFather);
+    VOID _EnumHubPorts(HANDLE hHubDevice, ULONG NumPorts, TiXmlElement* pXmlFather);
 
 private:
     PUSB_DESCRIPTOR_REQUEST _GetConfigDescriptor(HANDLE hHubDevice, ULONG ConnectionIndex, UCHAR DescriptorIndex);
-    PStringDescriptorNode   _GetStringDescriptor(HANDLE hHubDevice, ULONG ConnectionIndex, UCHAR DescriptorIndex, USHORT LanguageID);
-
+    BOOL IsAdbDevice(const CString& sFatherHubName, int nPortNum);
     PUSB_COMMON_DESCRIPTOR  _GetNextDescriptor(
         _In_reads_bytes_(TotalLength) PUSB_COMMON_DESCRIPTOR FirstDescriptor,
         _In_ ULONG TotalLength,
@@ -79,7 +72,7 @@ private:
     PUSB_COMMON_DESCRIPTOR  _NextDescriptor(_In_ PUSB_COMMON_DESCRIPTOR Descriptor);
 
     void _MyReadUsbDescriptorRequest(PUSB_DESCRIPTOR_REQUEST pRequest, BOOL& bFindInterface0xff42);
-    void _ParsepUsbDescriptorRequest( PUSB_DESCRIPTOR_REQUEST pRequest);
+    void _ParsepUsbDescriptorRequest( PUSB_DESCRIPTOR_REQUEST pRequest, TiXmlElement* pXmlFather);
 
 private:
     // 如:"\\?\pci#ven_8086&dev_1e26&subsys_05771028&rev_04#3&11583659&1&e8#{3abf6f2d-71c4-462a-8a92-1e6861e6af27}"

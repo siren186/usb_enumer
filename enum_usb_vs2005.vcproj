@@ -178,6 +178,10 @@
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
 			<File
+				RelativePath=".\debug_mode_check.h"
+				>
+			</File>
+			<File
 				RelativePath=".\main.cpp"
 				>
 			</File>
@@ -206,11 +210,15 @@
 				>
 			</File>
 			<File
-				RelativePath=".\UsbEnumer.cpp"
+				RelativePath=".\usb_enumer.cpp"
 				>
 			</File>
 			<File
-				RelativePath=".\UsbEnumer.h"
+				RelativePath=".\usb_enumer.h"
+				>
+			</File>
+			<File
+				RelativePath=".\usb_enumer_helper.h"
 				>
 			</File>
 		</Filter>
@@ -280,10 +288,6 @@
 				</File>
 			</Filter>
 		</Filter>
-		<File
-			RelativePath=".\ReadMe.txt"
-			>
-		</File>
 	</Files>
 	<Globals>
 	</Globals>
