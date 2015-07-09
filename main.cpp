@@ -4,6 +4,5 @@
 int _tmain(int argc, _TCHAR* argv[])
 {
     CDebugModeCheck::IsDebugModeOpen(L"");
-
-	return 0;
+    return 0;
 }
